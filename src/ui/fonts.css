@@ -1,0 +1,33 @@
+/* Document-scoped @font-face declaration.
+ *
+ * Two reasons this lives in its own file instead of overlay.css:
+ *   1. @font-face is ignored inside a shadow root, so it has to reach the
+ *      document. This file is loaded through the manifest's content_scripts.css,
+ *      which the browser exempts from the page's CSP.
+ *   2. url() in an extension stylesheet resolves against the extension origin,
+ *      so the relative path below works unchanged in the extension and in
+ *      dev/preview.html.
+ *
+ * One family for the whole display -- title, labels, lyrics, timecodes. The
+ * numeric alignment that a monospace would have provided comes from Pretendard's
+ * tabular figures instead (font-variant-numeric: tabular-nums in overlay.css).
+ *
+ * The file itself is not in the repo -- see src/fonts/README.md. Until it is
+ * dropped in, everything falls through to the stack in overlay.css.
+ *
+ * This is the cheap path, not the only one. Whether a content script's
+ * @font-face actually reaches the page varies with how the browser treats
+ * injected stylesheets and the page's own font-src policy, and when it does not
+ * the display simply renders in the fallback stack with nothing to show for it.
+ * 05-overlay.js checks on mount and loads the file itself if this did not take.
+ */
+
+@font-face {
+  font-family: "YTMD Sans";
+  /* Plain `woff2`. The `-variations` format strings are deprecated in CSS Fonts
+   * 4 and buy nothing here -- the `font-weight` range below is what declares the
+   * variable axis. */
+  src: url("../fonts/PretendardVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}

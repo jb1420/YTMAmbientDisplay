@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>YTM Display</title>
+<link rel="stylesheet" href="../ui/fonts.css">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+<header>
+  <h1>YTM Display</h1>
+  <label class="switch">
+    <input type="checkbox" id="enabled">
+    <span class="slider"></span>
+  </label>
+</header>
+
+<section>
+  <p class="eyebrow">Side panel</p>
+  <div class="segment" role="radiogroup" aria-label="사이드 패널">
+    <button type="button" role="radio" data-panel="none" aria-checked="true">없음</button>
+    <button type="button" role="radio" data-panel="lyrics" aria-checked="false">가사</button>
+    <button type="button" role="radio" data-panel="queue" aria-checked="false">대기열</button>
+  </div>
+  <p class="note">한 번에 하나만 열립니다.</p>
+</section>
+
+<section>
+  <p class="eyebrow">Background</p>
+  <ul class="rows">
+    <li>
+      <label for="gradientMotion">
+        <span class="name">그래디언트 움직임</span>
+        <span class="note">끄면 색은 그대로, 흐름만 멈춥니다</span>
+      </label>
+      <label class="switch"><input type="checkbox" id="gradientMotion"><span class="slider"></span></label>
+    </li>
+  </ul>
+</section>
+
+<footer id="hint">music.youtube.com 플레이어 바의 전체화면 버튼으로 엽니다.</footer>
+
+<script src="../lib/api.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

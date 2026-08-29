@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "YTM Display",
+  "version": "0.1.0",
+  "description": "YouTube Music을 앨범 커버 색으로 물든 전체화면으로 봅니다. 가사나 대기열을 곁에 띄울 수 있고, 재생 컨트롤은 항상 보입니다.",
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://music.youtube.com/*"
+      ],
+      "css": [
+        "src/ui/fonts.css"
+      ],
+      "js": [
+        "src/lib/api.js",
+        "src/content/01-adapter.js",
+        "src/content/02-palette.js",
+        "src/content/03-lyrics.js",
+        "src/content/04-queue.js",
+        "src/content/05-overlay.js",
+        "src/content/06-main.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/fonts/*",
+        "src/ui/overlay.css"
+      ],
+      "matches": [
+        "https://music.youtube.com/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "YTM Display"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ytm-display@jb142",
+      "strict_min_version": "128.0"
+    }
+  }
+}

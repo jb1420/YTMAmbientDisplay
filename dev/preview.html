@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>YTM Display — design harness</title>
+<link rel="stylesheet" href="../src/ui/fonts.css">
+<style>
+  /* Dev chrome only -- deliberately not styled like the product, so a
+     screenshot never confuses the two. */
+  html, body { margin: 0; height: 100%; background: #07090c; overflow: hidden; }
+
+  /* The overlay sets z-index 2147483647 on its host; the harness drops it to 1
+     so this panel can sit on top. Press H to hide it for a clean screenshot. */
+  #panel {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 10;
+    display: grid;
+    gap: 10px;
+    width: 236px;
+    padding: 14px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 10px;
+    background: rgba(10,12,16,.86);
+    backdrop-filter: blur(14px);
+    color: #e8ecf0;
+    font: 12px/1.4 ui-monospace, Consolas, monospace;
+  }
+  #panel[hidden] { display: none; }
+  #panel h2 {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: #7d8795;
+  }
+  #panel .row { display: flex; gap: 6px; }
+  #panel button {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  #panel button:hover { background: rgba(255,255,255,.09); }
+  #panel button[aria-pressed="true"] { background: #e8ecf0; color: #0a0c10; border-color: #e8ecf0; }
+  #panel .hint { margin: 0; color: #6b7480; font-size: 10.5px; }
+  #panel code { color: #9fb0c4; }
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <h2>Design harness</h2>
+  <div class="row">
+    <button id="prev">◀ track</button>
+    <button id="next">track ▶</button>
+  </div>
+  <div class="row">
+    <button id="play" aria-pressed="false">play</button>
+  </div>
+  <div class="row" id="panels">
+    <button data-panel="none" aria-pressed="true">none</button>
+    <button data-panel="lyrics" aria-pressed="false">lyrics</button>
+    <button data-panel="queue" aria-pressed="false">queue</button>
+  </div>
+  <div class="row">
+    <button id="motion" aria-pressed="true">motion</button>
+    <button id="replay">replay in</button>
+  </div>
+  <p class="hint">현재: <code id="who">–</code></p>
+  <p class="hint"><code>H</code> 패널 숨김 · <code>F</code> 전체화면</p>
+</div>
+
+<script src="../src/content/02-palette.js"></script>
+<script src="../src/content/05-overlay.js"></script>
+<script src="mock.js"></script>
+<script>
+(async () => {
+  "use strict";
+
+  const state = {
+    index: 0,
+    paused: true,
+    panel: "none",     // "none" | "lyrics" | "queue" -- exclusive, as shipped
+    motion: true,
+    position: 20,
+  };
+
+  let lastPanel = "lyrics";     // what the chevron reopens, same as the extension
+
+  const $ = (id) => document.getElementById(id);
+  const track = () => MOCK.tracks[state.index];
+
+  const overlay = new YTMD.Overlay({
+    assetsBase: "../src",
+    handlers: {
+      onPlayPause: () => { state.paused = !state.paused; sync(); },
+      onPrev: () => step(-1),
+      onNext: () => step(1),
+      onSeek: (sec) => { state.position = sec; sync(); },
+      onSelectPanel: (name) => { state.panel = name; sync(); },
+      onToggleNotes: () => {
+        if (state.panel === "none") { state.panel = lastPanel; }
+        else { lastPanel = state.panel; state.panel = "none"; }
+        sync();
+      },
+      onQueuePick: (i) => {
+        const found = MOCK.tracks.findIndex((t) => t.queueIndex === i);
+        if (found >= 0) { state.index = found; state.position = 0; sync(); }
+      },
+      onExit: () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+      },
+    },
+  });
+
+  await overlay.mount(document.body);
+  overlay.host.style.zIndex = "1";
+  overlay.open();
+
+  function step(delta) {
+    state.index = (state.index + delta + MOCK.tracks.length) % MOCK.tracks.length;
+    state.position = 0;
+    sync();
+  }
+
+  async function sync() {
+    const t = track();
+
+    overlay.setMotion(state.motion);
+    overlay.setPanel(state.panel);
+    overlay.setTrack({ title: t.title, artist: t.artist, album: t.album, artUrl: t.artUrl });
+    overlay.setPlayback({ position: state.position, duration: t.duration, paused: state.paused });
+    overlay.setLyrics(t.lyrics);
+    overlay.setQueue({
+      items: MOCK.queue.map((q, i) => ({ ...q, current: i === t.queueIndex })),
+    });
+
+    $("play").textContent = state.paused ? "play" : "pause";
+    $("play").setAttribute("aria-pressed", String(!state.paused));
+    $("motion").setAttribute("aria-pressed", String(state.motion));
+    for (const btn of $("panels").children) {
+      btn.setAttribute("aria-pressed", String(btn.dataset.panel === state.panel));
+    }
+    $("who").textContent = `${state.index + 1}/${MOCK.tracks.length} ${t.artUrl ?? "no art"}`;
+
+    overlay.setPalette(await YTMD.palette.extract(t.artUrl));
+  }
+
+  $("prev").onclick = () => step(-1);
+  $("next").onclick = () => step(1);
+  $("play").onclick = () => { state.paused = !state.paused; sync(); };
+  $("motion").onclick = () => { state.motion = !state.motion; sync(); };
+  $("replay").onclick = () => { overlay.close(); overlay.open(); sync(); };
+  $("panels").onclick = (ev) => {
+    const btn = ev.target.closest("[data-panel]");
+    if (btn) { state.panel = btn.dataset.panel; sync(); }
+  };
+
+  addEventListener("keydown", (ev) => {
+    if (ev.key === "h" || ev.key === "H") $("panel").hidden = !$("panel").hidden;
+    if (ev.key === "f" || ev.key === "F") overlay.requestFullscreen();
+  });
+
+  await sync();
+})();
+</script>
+</body>
+</html>
