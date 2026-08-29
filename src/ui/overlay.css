@@ -1,4 +1,4 @@
-/* YTM Display -- overlay stylesheet.
+/* YTM Ambient Display -- overlay stylesheet.
  *
  * Fetched as text, `__ASSETS__` swapped for the extension (or dev) asset root,
  * then adopted into the overlay's shadow root as a constructed stylesheet. That

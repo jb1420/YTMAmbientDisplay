@@ -42,7 +42,7 @@ YTMD.settings = (() => {
     try {
       return { ...DEFAULTS, ...(await area().get(DEFAULTS)) };
     } catch (err) {
-      console.warn("[YTM Display] could not read settings, using defaults:", err);
+      console.warn("[YTM Ambient Display] could not read settings, using defaults:", err);
       return { ...DEFAULTS };
     }
   }
@@ -51,7 +51,7 @@ YTMD.settings = (() => {
     try {
       await area().set(patch);
     } catch (err) {
-      console.warn("[YTM Display] could not save settings:", err);
+      console.warn("[YTM Ambient Display] could not save settings:", err);
     }
   }
 

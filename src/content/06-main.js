@@ -35,8 +35,8 @@
     const btn = document.createElement("button");
     btn.id = BUTTON_ID;
     btn.type = "button";
-    btn.title = "YTM Display 전체화면";
-    btn.setAttribute("aria-label", "YTM Display 전체화면");
+    btn.title = "YTM Ambient Display 전체화면";
+    btn.setAttribute("aria-label", "YTM Ambient Display 전체화면");
     btn.style.cssText = [
       "width:40px", "height:40px", "display:inline-grid", "place-items:center",
       "padding:0", "border:0", "border-radius:50%", "background:transparent",
@@ -264,5 +264,5 @@
     });
   }
 
-  boot().catch((err) => console.error("[YTM Display] failed to start:", err));
+  boot().catch((err) => console.error("[YTM Ambient Display] failed to start:", err));
 })();

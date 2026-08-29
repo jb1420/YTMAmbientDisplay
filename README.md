@@ -1,4 +1,4 @@
-# YTM Display
+# YTM Ambient Display
 
 A fullscreen now-playing screen for YouTube Music, tinted by the album cover.
 Chrome and Firefox, one codebase, no build step.

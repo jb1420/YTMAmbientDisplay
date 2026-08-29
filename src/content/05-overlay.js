@@ -179,7 +179,7 @@ YTMD.Overlay = (() => {
       document.fonts.add(face);
     })().catch((err) => {
       // The fallback stack in overlay.css is a real design, just a lesser one.
-      console.warn(`[YTM Display] ${FONT_FAMILY} unavailable:`, err.message);
+      console.warn(`[YTM Ambient Display] ${FONT_FAMILY} unavailable:`, err.message);
     });
     return fontReady;
   }
@@ -397,7 +397,7 @@ YTMD.Overlay = (() => {
         if (!document.fullscreenElement) await this.host.requestFullscreen();
       } catch (err) {
         // Windowed overlay is a perfectly good fallback.
-        console.warn("[YTM Display] fullscreen refused:", err.message);
+        console.warn("[YTM Ambient Display] fullscreen refused:", err.message);
       }
     }
 

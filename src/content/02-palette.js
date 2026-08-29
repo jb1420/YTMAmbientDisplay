@@ -267,7 +267,7 @@ YTMD.palette = (() => {
       const { ranked, monochrome } = rank(readPixels(img));
       tokens = ranked.length ? build(ranked, monochrome) : { ...DEFAULT };
     } catch (err) {
-      console.warn("[YTM Display] palette extraction failed:", err.message);
+      console.warn("[YTM Ambient Display] palette extraction failed:", err.message);
       tokens = { ...DEFAULT };
     }
 
