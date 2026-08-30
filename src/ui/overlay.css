@@ -472,6 +472,30 @@
 }
 .lyrics::-webkit-scrollbar-track { background: transparent; }
 
+/* Timed lyrics are the same column at the same size -- one line is simply lit
+   and the rest are not. Nothing changes weight or scale as the highlight
+   passes: a line that grows reflows the ones under it, and the scroll the
+   highlight just asked for arrives to find its target somewhere else.
+
+   Past lines fade further than lines still to come. What is coming is what
+   someone reads ahead to. */
+.lyrics.is-timed { white-space: normal; }
+
+.lyric-line {
+  margin: 0 0 .34em;
+  color: var(--ink-faint);
+  transition: color 260ms var(--ease);
+}
+.lyric-line.is-past { color: color-mix(in oklab, var(--ink) 28%, transparent); }
+.lyric-line.is-active { color: var(--ink); }
+
+/* An instrumental stretch: keeps the gap the timing asks for so the highlight
+   waits it out where the words stopped, instead of jumping the break. */
+.lyric-line.is-gap { min-height: .9em; }
+
+.lyrics.is-seekable .lyric-line:not(.is-gap) { cursor: pointer; }
+.lyrics.is-seekable .lyric-line:not(.is-active):hover { color: var(--ink-dim); }
+
 .lyrics-source {
   margin: 0;
   font: 400 10.72px/1 var(--sans);

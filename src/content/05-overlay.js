@@ -138,6 +138,18 @@ YTMD.Overlay = (() => {
   const FIT_KEEP_ONE = [1, .94, .88];
   const FIT_ALLOW_TWO = [1, .94, .88, .8, .72];
 
+  /* ---------------------------------------------------------------- lyrics -- */
+
+  /* How long a hand on the lyric column keeps the auto-scroll off. Long enough
+   * to read a verse ahead; short enough that it comes back on its own rather
+   * than needing a gesture to release it. */
+  const SCROLL_HOLD_MS = 4000;
+
+  /* Where the current line sits, as a fraction of the column's height. Above
+   * the middle, because what is coming matters more than what has gone -- and
+   * a line landing dead centre reads as an accident of layout. */
+  const SCROLL_ANCHOR = .38;
+
   /* ----------------------------------------------------------------- font -- */
 
   /* The display is one typeface doing every job, so "the @font-face did not take"
@@ -207,6 +219,15 @@ YTMD.Overlay = (() => {
       this._lastQueue = null;
       this._raf = 0;
       this._fitTimer = 0;
+
+      this._lyricLines = [];     // {t, text}; empty when the source has no timings
+      this._lyricNodes = [];     // one per line, in the same order
+      this._lyricIndex = -1;
+      this._lyricOffset = 0;     // seconds, the reader's own correction
+      this._lyricSeek = false;
+      this._lyricHold = 0;       // auto-scroll stands down until this timestamp
+      this._lyricTimer = 0;
+
     }
 
     /* ------------------------------------------------------------ mount -- */
@@ -287,6 +308,7 @@ YTMD.Overlay = (() => {
         if (row) this.handlers.onQueuePick?.(Number(row.dataset.index));
       });
 
+      this._wireLyrics();
       this._wireScrub();
 
       // Escape leaves fullscreen on its own; this covers the windowed case.
@@ -307,6 +329,31 @@ YTMD.Overlay = (() => {
       });
       this._onResize = () => this._scheduleFit();
       window.addEventListener("resize", this._onResize);
+    }
+
+    /* Two things the lyric column has to do besides scroll itself.
+     *
+     * The first is know when to stop. Someone reading ahead, or back to a line
+     * they liked, is fighting the highlight for the scrollbar and would lose
+     * every time. So any hand on the panel stands the auto-scroll down for a
+     * few seconds. The signal is the input, not the `scroll` event -- our own
+     * scrollTo fires that one too, and it would switch itself off forever. */
+    _wireLyrics() {
+      const box = this.el.lyrics;
+      const hold = () => { this._lyricHold = performance.now() + SCROLL_HOLD_MS; };
+      for (const type of ["wheel", "pointerdown", "touchstart", "keydown"]) {
+        box.addEventListener(type, hold, { passive: true });
+      }
+
+      // The second is seeking. Left as <p>: sixty-odd buttons would bury every
+      // real control in the tab order to buy a keyboard route to something the
+      // scrub bar already does.
+      box.addEventListener("click", (ev) => {
+        if (!this._lyricSeek) return;
+        const line = ev.target.closest(".lyric-line");
+        if (!line?.dataset.t) return;
+        this.handlers.onSeek?.(Number(line.dataset.t));
+      });
     }
 
     _wireScrub() {
@@ -359,6 +406,7 @@ YTMD.Overlay = (() => {
     destroy() {
       cancelAnimationFrame(this._raf);
       clearTimeout(this._fitTimer);
+      clearTimeout(this._lyricTimer);
       window.removeEventListener("keydown", this._onKey, true);
       window.removeEventListener("resize", this._onResize);
       this.host?.remove();
@@ -490,6 +538,7 @@ YTMD.Overlay = (() => {
       // transitionend carries the fit once the column has finished moving;
       // this is the backstop for the case where the width does not change.
       this._scheduleFit();
+      if (name === "lyrics") this._scheduleLyricAnchor();
     }
 
     setTrack({ title = "", artist = "", album = "", artUrl = null } = {}) {
@@ -581,18 +630,67 @@ YTMD.Overlay = (() => {
       this.el.diag.textContent = text;
     }
 
-    setLyrics({ state = "none", text = "", source = "" } = {}) {
+    /* Timed lyrics arrive as `lines`, untimed ones as `text`. Both are shown in
+     * the same column at the same size -- only the timed one gets a highlight
+     * that moves, so the difference is a behaviour rather than a second design.
+     *
+     * @param {{state?:"ok"|"none"|"loading"|"instrumental",
+     *          lines?:{t:number,text:string}[], text?:string, source?:string}} result
+     */
+    setLyrics({ state = "none", lines = null, text = "", source = "" } = {}) {
       const box = this.el.lyrics;
-      if (state === "ok" && text.trim()) {
+
+      this._lyricLines = [];
+      this._lyricNodes = [];
+      this._lyricIndex = -1;
+      this._lyricHold = 0;
+
+      const timed = state === "ok" && lines?.length;
+      box.classList.toggle("is-timed", !!timed);
+
+      if (timed) {
+        const frag = document.createDocumentFragment();
+        for (const line of lines) {
+          const p = document.createElement("p");
+          p.className = line.text ? "lyric-line" : "lyric-line is-gap";
+          p.dataset.t = String(line.t);
+          p.textContent = line.text;
+          frag.appendChild(p);
+          this._lyricNodes.push(p);
+        }
+        box.replaceChildren(frag);
+        this._lyricLines = lines;
+        box.classList.remove("empty");
+        this.el.lyricsSource.textContent = source || "";
+      } else if (state === "ok" && text.trim()) {
         box.textContent = text;
         box.classList.remove("empty");
         this.el.lyricsSource.textContent = source || "";
       } else {
-        box.textContent = state === "loading" ? "가사를 불러오는 중" : "이 곡은 가사가 없습니다";
+        box.textContent =
+          state === "loading" ? "가사를 불러오는 중" :
+          state === "instrumental" ? "가사 없는 연주곡입니다" :
+          "이 곡은 가사가 없습니다";
         box.classList.add("empty");
         this.el.lyricsSource.textContent = "";
       }
+
       box.scrollTop = 0;
+      // The loop only paints while something is playing, so a panel opened on
+      // a paused track would otherwise sit with no line lit at all.
+      this._paint();
+    }
+
+    /** @param {number} seconds -- positive moves the words later. */
+    setLyricsOffset(seconds = 0) {
+      this._lyricOffset = Number.isFinite(seconds) ? seconds : 0;
+      this._lyricIndex = -1;         // recompute against the new clock
+      this._paint();
+    }
+
+    setLyricsSeekable(on) {
+      this._lyricSeek = !!on;
+      this.el.lyrics.classList.toggle("is-seekable", this._lyricSeek);
     }
 
     _queueChanged(items) {
@@ -703,6 +801,70 @@ YTMD.Overlay = (() => {
       this.el.track.setAttribute("aria-valuemax", String(Math.round(duration)));
       this.el.track.setAttribute("aria-valuenow", String(Math.round(shown)));
       this.el.track.setAttribute("aria-valuetext", formatTime(shown));
+
+      // `shown` rather than `live`, so dragging the scrub bar carries the
+      // lyrics with it and the drop lands where it looked like it would.
+      if (this._lyricLines.length) this._paintLyrics(shown);
+    }
+
+    /* Which line is live, and only that. The index is walked from wherever it
+     * already was rather than searched for: playing forward it moves one step
+     * per line, and a seek walks it as far as it has to go, which is still
+     * cheaper than measuring anything. */
+    _paintLyrics(time) {
+      const lines = this._lyricLines;
+      const nodes = this._lyricNodes;
+      const t = time + this._lyricOffset;
+
+      let i = Math.min(this._lyricIndex, lines.length - 1);
+      while (i + 1 < lines.length && lines[i + 1].t <= t) i++;
+      while (i >= 0 && lines[i].t > t) i--;
+      if (i === this._lyricIndex) return;
+
+      const from = this._lyricIndex;
+      this._lyricIndex = i;
+
+      nodes[from]?.classList.remove("is-active");
+      // Every line before the live one is spent. Only the span between where
+      // the highlight was and where it landed can have changed, so even a seek
+      // across the whole song touches just the lines it crossed.
+      for (let n = Math.max(0, Math.min(from, i)); n <= Math.max(from, i); n++) {
+        nodes[n]?.classList.toggle("is-past", n < i);
+      }
+      nodes[i]?.classList.add("is-active");
+
+      this._scrollLyric(i);
+    }
+
+    /* Measured off bounding rects rather than offsetTop: the scroller is not
+     * positioned, so offsetTop would be counted from .notes and every line
+     * would land the height of the switcher too low. */
+    _scrollLyric(i) {
+      if (i < 0 || performance.now() < this._lyricHold) return;
+      const box = this.el.lyrics;
+      const node = this._lyricNodes[i];
+      if (!node || !box.clientHeight) return;   // panel closed; nothing to measure
+
+      const boxTop = box.getBoundingClientRect().top;
+      const rect = node.getBoundingClientRect();
+      const top = box.scrollTop + (rect.top - boxTop)
+                  - box.clientHeight * SCROLL_ANCHOR + rect.height / 2;
+
+      box.scrollTo({
+        top: Math.max(0, top),
+        behavior: this._reduceMotion ? "auto" : "smooth",
+      });
+    }
+
+    /* The column takes 640ms to open, and the lines rewrap as it does. Anchor
+     * once that has settled, or the highlight sits wherever the old width put
+     * it. */
+    _scheduleLyricAnchor() {
+      clearTimeout(this._lyricTimer);
+      this._lyricTimer = setTimeout(() => {
+        this._lyricHold = 0;
+        this._scrollLyric(this._lyricIndex);
+      }, 680);
     }
   }
 

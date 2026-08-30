@@ -32,10 +32,15 @@ YTMD.settings = (() => {
     enabled: true,        // master switch -- off removes the button and unmounts
     panel: "none",        // "none" | "lyrics" | "queue"
     gradientMotion: true,
+    // The only setting that lets anything leave the machine: with it off,
+    // lyrics come from YouTube Music's own panel and nothing is requested.
+    syncedLyrics: true,
+    lyricsSeek: true,     // clicking a timed line jumps to it
+    lyricsOffset: 0,      // ms, user correction; [ and ] in the display
   });
 
   // storage.sync can be unavailable (Firefox without an add-on ID, or a policy
-  // that disables it). Local is a fine fallback -- these are four booleans.
+  // that disables it). Local is a fine fallback -- these are a few flags.
   const area = () => api.storage.sync ?? api.storage.local;
 
   async function read() {

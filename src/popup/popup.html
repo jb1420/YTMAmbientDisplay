@@ -27,7 +27,28 @@
 </section>
 
 <section>
-  <p class="eyebrow">Background</p>
+  <p class="eyebrow">Lyrics</p>
+  <ul class="rows">
+    <li>
+      <label for="syncedLyrics">
+        <span class="name">싱크 가사 찾기</span>
+        <span class="note">제목·아티스트·앨범·길이를 lrclib.net에 보내 줄별 타임스탬프를 받아옵니다. 끄면 YouTube Music 가사만 씁니다</span>
+      </label>
+      <label class="switch"><input type="checkbox" id="syncedLyrics"><span class="slider"></span></label>
+    </li>
+    <li>
+      <label for="lyricsSeek">
+        <span class="name">가사 줄 클릭해서 이동</span>
+        <span class="note">싱크 가사에서만 동작합니다</span>
+      </label>
+      <label class="switch"><input type="checkbox" id="lyricsSeek"><span class="slider"></span></label>
+    </li>
+  </ul>
+  <p class="note">싱크가 어긋나면 전체화면에서 <kbd>[</kbd> <kbd>]</kbd> 로 0.1초씩 맞춥니다.</p>
+</section>
+
+<section>
+  <p class="eyebrow">Motion</p>
   <ul class="rows">
     <li>
       <label for="gradientMotion">

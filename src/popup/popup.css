@@ -63,6 +63,21 @@ h1 {
 .name { font-size: 13px; font-weight: 500; }
 .note { font-size: 11px; line-height: 1.35; color: var(--ink-faint); }
 
+/* A note that names a key needs the key to look pressable, or "[" reads as
+   punctuation that wandered in. */
+.note kbd {
+  display: inline-block;
+  min-width: 1.15em;
+  padding: 1px 4px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--ink-dim);
+}
+
 /* --------------------------------------------------------------- segment -- */
 
 /* Three exclusive choices, so a segmented control rather than two switches --
@@ -93,7 +108,8 @@ h1 {
 
 section + section { margin-top: 4px; }
 
-.segment + .note { margin: 8px 18px 0; }
+.segment + .note,
+.rows + .note { margin: 8px 18px 0; }
 
 /* --------------------------------------------------------------- switch -- */
 

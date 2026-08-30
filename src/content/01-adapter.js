@@ -117,7 +117,8 @@ YTMD.adapter = (() => {
 
     const segments = bylineSegments(el);
     if (!segments.length) {
-      return { artist: el.getAttribute?.("title")?.trim() || text(el), album: "" };
+      const only = el.getAttribute?.("title")?.trim() || text(el);
+      return { artist: only, artists: only ? [only] : [], album: "" };
     }
 
     const points = (seg, re) => seg.links.some((href) => re.test(href));
@@ -133,6 +134,10 @@ YTMD.adapter = (() => {
     const join = (segs) => segs.map((s) => s.text).join(" · ");
     return {
       artist: join(artists),
+      // Kept apart as well as joined. The display wants the whole credit; a
+      // lyrics lookup wants one name it can match on, and "A · B" matches
+      // nothing.
+      artists: artists.map((s) => s.text),
       album: join(
         segments.filter((s) => !artists.includes(s) && !YEAR_ONLY.test(s.text)),
       ),
@@ -142,11 +147,12 @@ YTMD.adapter = (() => {
   function getTrack() {
     const titleEl = $(SEL.title);
     const title = titleEl?.getAttribute("title")?.trim() || text(titleEl);
-    const { artist, album } = parseByline($(SEL.byline));
+    const { artist, artists, album } = parseByline($(SEL.byline));
     const raw = $(SEL.art)?.src || null;
     return {
       title,
       artist,
+      artists,
       album,
       artUrl: coverAt(raw, 1200),
       artSmallUrl: coverAt(raw, 544),
@@ -175,18 +181,51 @@ YTMD.adapter = (() => {
    * them gives a bar that never resets.
    *
    * #progress-bar is the clock YTM's own UI draws from, and it is always scoped
-   * to the track on screen. So that is the source, and <video> is the fallback
-   * for the moment before the bar has a value -- where its own duration is
-   * still NaN anyway, which is the case the old fallback existed for.
+   * to the track on screen. So that is the source of the duration, and <video>
+   * is the fallback for the moment before the bar has a value -- where its own
+   * duration is still NaN anyway, which is the case the old fallback existed for.
+   *
+   * The position needs both of them, because neither one is good enough alone.
+   * The bar reports whole seconds, and a second of slack is what puts a lyric
+   * line on the wrong side of the beat. <video> is exact to the frame but is
+   * still carrying everything stitched in ahead of this track.
+   *
+   * That stitched-in head is the difference between the two clocks, and it is
+   * fixed for as long as one track is playing. Every reading of it lands in
+   * [offset, offset + 1) because the bar floors, so the smallest reading in the
+   * recent window is the one closest to the truth. The bar ticks once a second
+   * against timeupdate's four, so a window of a few seconds always contains a
+   * reading taken just after a tick -- which is the accurate one.
    */
+  const OFFSET_WINDOW = 16;           // ~4s of timeupdate samples
+  let offsetRing = [];
+
+  function sampleClock() {
+    const v = video();
+    const barNow = num($(SEL.progress), "aria-valuenow");
+    if (!v || !Number.isFinite(barNow)) return;
+    offsetRing.push(v.currentTime - barNow);
+    if (offsetRing.length > OFFSET_WINDOW) offsetRing.shift();
+  }
+
+  /* Every reading in the window is stale the moment the two clocks stop being
+   * a fixed distance apart: a new track, or a seek the bar has not caught up
+   * with yet. Both start the estimate over rather than dragging the old one. */
+  const resetClock = () => { offsetRing = []; };
+  const mediaOffset = () => (offsetRing.length ? Math.min(...offsetRing) : null);
+
   function getPlayback() {
     const v = video();
     const paused = v ? v.paused : true;
 
     const bar = $(SEL.progress);
     const duration = num(bar, "aria-valuemax");
-    const position = num(bar, "aria-valuenow");
-    if (duration > 0 && Number.isFinite(position)) {
+    const barNow = num(bar, "aria-valuenow");
+    if (duration > 0 && Number.isFinite(barNow)) {
+      // Until the offset has settled the bar's own whole second is the honest
+      // answer -- a guessed fraction would be worse than no fraction.
+      const offset = mediaOffset();
+      const position = offset !== null && v ? v.currentTime - offset : barNow;
       return { position: clamp(position, 0, duration), duration, paused };
     }
 
@@ -200,11 +239,10 @@ YTMD.adapter = (() => {
   const prev = () => click(SEL.prev);
   const next = () => click(SEL.next);
 
-  /* The target arrives in bar-time, which is offset from the media element's
-   * clock by everything already stitched in ahead of this track. The difference
-   * between the two is that offset. It is only trusted once it is large enough
-   * to be real -- otherwise the bar's one-second granularity would drag an
-   * exact seek off by a fraction on every ordinary track. */
+  /* The target arrives in bar-time; the media element is the only thing that
+   * can be assigned to. Same offset as getPlayback(), same estimate -- before
+   * it settles, zero, which is the right answer for every track that has
+   * nothing stitched in ahead of it. */
   function seek(seconds) {
     const v = video();
     if (!v || !Number.isFinite(seconds)) return;
@@ -212,11 +250,7 @@ YTMD.adapter = (() => {
     const { duration } = getPlayback();
     const target = duration > 0 ? clamp(seconds, 0, duration) : Math.max(0, seconds);
 
-    const barNow = num($(SEL.progress), "aria-valuenow");
-    const drift = Number.isFinite(barNow) ? v.currentTime - barNow : 0;
-    const offset = Math.abs(drift) < 2 ? 0 : drift;
-
-    v.currentTime = Math.max(0, target + offset);
+    v.currentTime = Math.max(0, target + (mediaOffset() ?? 0));
   }
 
   /* ------------------------------------------------------------ watching -- */
@@ -239,9 +273,19 @@ YTMD.adapter = (() => {
     let settleUntil = 0;
 
     const emitPlayback = () => {
+      // Inside the settling window the bar still holds the outgoing track, so
+      // the two clocks are not a fixed distance apart and a sample taken here
+      // would poison the estimate for the rest of the song.
+      if (performance.now() >= settleUntil) sampleClock();
       const pb = getPlayback();
+      /* `settling` is reported rather than merely corrected, because the
+       * position is not the only stale reading: aria-valuemax is the outgoing
+       * track's length too, and unlike the position there is no sane value to
+       * substitute for it. Anything that keys off the running time -- a lyrics
+       * lookup matches on it -- has to be able to wait instead. */
+      pb.settling = false;
       if (performance.now() < settleUntil) {
-        if (pb.position > 3) pb.position = 0;
+        if (pb.position > 3) { pb.position = 0; pb.settling = true; }
         else settleUntil = 0;
       }
       onPlayback?.(pb);
@@ -254,7 +298,7 @@ YTMD.adapter = (() => {
       const advanced = changed && lastKey !== null;
       lastKey = track.key;
       onTrack?.(track);
-      if (advanced) settleUntil = performance.now() + 2000;
+      if (advanced) { settleUntil = performance.now() + 2000; resetClock(); }
       emitPlayback();
     };
 
@@ -264,9 +308,17 @@ YTMD.adapter = (() => {
       const v = video();
       if (!v || v === boundVideo) return;
       const events = ["play", "pause", "timeupdate", "durationchange",
-                      "loadedmetadata", "seeked", "emptied", "ended"];
+                      "loadedmetadata", "emptied", "ended"];
       for (const type of events) v.addEventListener(type, emitPlayback);
-      disposers.push(() => events.forEach((t) => v.removeEventListener(t, emitPlayback)));
+      // Seeking backwards moves the media clock while the bar is still at the
+      // old second, which reads as an offset a second too small -- and the
+      // estimate keeps the smallest reading it sees. So it starts over.
+      const onSeeked = () => { resetClock(); emitPlayback(); };
+      v.addEventListener("seeked", onSeeked);
+      disposers.push(() => {
+        events.forEach((t) => v.removeEventListener(t, emitPlayback));
+        v.removeEventListener("seeked", onSeeked);
+      });
       boundVideo = v;
       emitPlayback();
     };

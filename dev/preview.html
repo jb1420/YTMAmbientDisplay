@@ -90,6 +90,7 @@
     panel: "none",     // "none" | "lyrics" | "queue" -- exclusive, as shipped
     motion: true,
     position: 20,
+    lyricOffset: 0,    // seconds, what [ and ] adjust in the extension
   };
 
   let lastPanel = "lyrics";     // what the chevron reopens, same as the extension
@@ -122,6 +123,7 @@
 
   await overlay.mount(document.body);
   overlay.host.style.zIndex = "1";
+  overlay.setLyricsSeekable(true);
   overlay.open();
 
   function step(delta) {
@@ -129,6 +131,18 @@
     state.position = 0;
     sync();
   }
+
+  /* A clock, so the timed lyrics have something to follow. Only setPlayback is
+   * called from here -- a full sync() would re-extract the palette four times a
+   * second and rebuild the lyric column out from under its own scroll. */
+  setInterval(() => {
+    if (state.paused) return;
+    const t = track();
+    state.position = Math.min(state.position + .25, t.duration);
+    overlay.setPlayback({
+      position: state.position, duration: t.duration, paused: state.paused,
+    });
+  }, 250);
 
   async function sync() {
     const t = track();
@@ -166,6 +180,13 @@
   addEventListener("keydown", (ev) => {
     if (ev.key === "h" || ev.key === "H") $("panel").hidden = !$("panel").hidden;
     if (ev.key === "f" || ev.key === "F") overlay.requestFullscreen();
+    // Same keys and same step as the extension, so the feel can be judged here.
+    const nudge = ev.key === "[" ? -.1 : ev.key === "]" ? .1 : 0;
+    if (nudge) {
+      state.lyricOffset = Math.round((state.lyricOffset + nudge) * 10) / 10;
+      overlay.setLyricsOffset(state.lyricOffset);
+      $("who").textContent = `lyric offset ${state.lyricOffset.toFixed(1)}s`;
+    }
   });
 
   await sync();

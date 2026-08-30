@@ -5,7 +5,7 @@
 (async () => {
   "use strict";
 
-  const TOGGLES = ["enabled", "gradientMotion"];
+  const TOGGLES = ["enabled", "gradientMotion", "syncedLyrics", "lyricsSeek"];
   const current = await YTMD.settings.read();
 
   const segment = [...document.querySelectorAll(".segment button")];

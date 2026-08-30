@@ -103,6 +103,7 @@
     });
     await overlay.mount(document.documentElement);
     overlay.setMotion(state.settings.gradientMotion);
+    applyLyricSettings();
     applyPanel();
     return overlay;
   }
@@ -117,6 +118,10 @@
     // trusting.
     reportDiagnostics();
     refreshTrackDependents(true);
+    // Safe to read the bar directly here and below: both are moments the user
+    // chose, long after any track change has settled. Needed because a paused
+    // track produces no playback tick to start the lookup from.
+    refreshLyrics(state.track, adapter.getPlayback().duration);
     refreshQueue();
   }
 
@@ -132,17 +137,39 @@
     overlay?.setPanel(state.settings.panel);
   }
 
+  function applyLyricSettings() {
+    overlay?.setLyricsOffset(state.settings.lyricsOffset / 1000);
+    overlay?.setLyricsSeekable(state.settings.lyricsSeek);
+  }
+
   async function refreshPalette(key, artUrl) {
     const tokens = await palette.extract(artUrl);
     if (state.track.key !== key) return;     // a newer track won
     overlay?.setPalette(tokens);
   }
 
-  async function refreshLyrics(key) {
-    if (state.settings.panel !== "lyrics") return;
+  // What the lyrics on screen belong to. Separate from state.track.key because
+  // a track can be current for a second or two before it can be looked up.
+  let lyricsKey = null;
+
+  /* The running time is half of what identifies a recording to a lyrics
+   * database, so it is passed in rather than read here: only the caller knows
+   * whether the length it is holding belongs to this track yet. On a track
+   * change the player bar carries the outgoing track's for up to two seconds,
+   * and a lookup keyed on the wrong length matches nothing at all -- which is
+   * indistinguishable, from here, from a track nobody has ever transcribed. */
+  async function refreshLyrics(track, duration) {
+    if (!state.open || state.settings.panel !== "lyrics" || !track?.key) return;
+    if (lyricsKey === track.key) return;
+    if (!(duration > 0)) return;
+
+    lyricsKey = track.key;
     overlay?.setLyrics({ state: "loading" });
-    const result = await lyrics.fetchFor(key);
-    if (state.track.key !== key) return;
+    const result = await lyrics.fetchFor(track, {
+      duration,
+      allowNetwork: state.settings.syncedLyrics,
+    });
+    if (state.track.key !== track.key) return;   // a newer track won
     overlay?.setLyrics(result);
   }
 
@@ -156,11 +183,13 @@
     const { key, artSmallUrl } = state.track;
     if (!key) return;
     refreshPalette(key, artSmallUrl);
-    refreshLyrics(key);
+    // Lyrics are not refreshed here. The playback tick is the only caller that
+    // knows whether the length on the bar has caught up with the title.
   }
 
   function onTrack(track) {
     state.track = track;
+    lyricsKey = null;
     overlay?.setTrack({
       title: track.title,
       artist: track.artist,
@@ -176,6 +205,10 @@
   function onPlayback(pb) {
     if (!state.open) return;
     overlay?.setPlayback(pb);
+    // The tick is what carries a length that belongs to the track on screen,
+    // so this is where the lookup starts. Cheap: it returns immediately once
+    // this track has been looked up once.
+    if (!pb.settling) refreshLyrics(state.track, pb.duration);
   }
 
   /* Surfaces a YTM DOM change instead of failing silently.
@@ -250,9 +283,19 @@
       if (!state.settings.enabled) return;
 
       if ("gradientMotion" in patch) overlay?.setMotion(patch.gradientMotion);
+      if ("lyricsOffset" in patch || "lyricsSeek" in patch) applyLyricSettings();
+      // Turning the lookup on or off changes where the words come from, so
+      // whatever is on screen is now the answer to a question nobody asked.
+      if ("syncedLyrics" in patch) {
+        lyrics.forget();
+        lyricsKey = null;
+        refreshLyrics(state.track, adapter.getPlayback().duration);
+      }
       if ("panel" in patch) {
         applyPanel();
-        if (patch.panel === "lyrics") refreshLyrics(state.track.key);
+        if (patch.panel === "lyrics") {
+          refreshLyrics(state.track, adapter.getPlayback().duration);
+        }
         if (patch.panel === "queue") refreshQueue();
       }
     });
