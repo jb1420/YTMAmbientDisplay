@@ -514,8 +514,14 @@ YTMD.Overlay = (() => {
       this.el.artWrap.classList.add("is-changing");
       try {
         // Decode before swapping so the sleeve never flashes empty.
+        //
+        // No `crossOrigin` here. The sleeve only ever paints the picture --
+        // 02-palette.js is the one that reads pixels back -- and a CORS image
+        // load from a content script is refused outright in Firefox, which
+        // left the fallback disc on screen for every track. Without the
+        // attribute the same request succeeds in both browsers, and it is the
+        // request the visible <img> below is about to make anyway.
         const img = new Image();
-        img.crossOrigin = "anonymous";
         img.src = url;
         await img.decode();
         if (this._artUrl !== url) return;   // a newer track won the race

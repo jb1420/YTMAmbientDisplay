@@ -4,10 +4,7 @@
  * tiny canvas, the pixels are bucketed by hue and lightness, and the three
  * strongest buckets become the gradient washes.
  *
- * `crossOrigin = "anonymous"` is load-bearing: googleusercontent serves the art
- * with a permissive CORS header, so the canvas stays untainted and getImageData
- * works. Without the attribute the same request taints it and throws. This is
- * the only reason the extension needs no background script.
+ * Getting the cover in at all is the awkward part -- see loadCover.
  */
 
 globalThis.YTMD = globalThis.YTMD || {};
@@ -93,22 +90,63 @@ YTMD.palette = (() => {
 
   /* ------------------------------------------------------------ sampling -- */
 
-  function loadImage(url) {
+  const LOAD_TIMEOUT = 8000;
+
+  /* Reading pixels back off a canvas requires the cover to have arrived without
+   * tainting it, and the two browsers do not agree on how to ask for that.
+   *
+   * The obvious way is `crossOrigin = "anonymous"` on an <img>, which is what
+   * this used to do and what still works in Chrome. Firefox refuses it from a
+   * content script: the load is attributed to the extension's principal and the
+   * request comes back "EncodingError: Invalid image request" before any header
+   * is looked at, so the cover never decoded and every track fell back to the
+   * neutral slate. (The plain, attribute-free load succeeds there -- it just
+   * taints the canvas, which is no use here.)
+   *
+   * Fetching the bytes works in both: googleusercontent answers with a
+   * permissive CORS header either way, and an ImageBitmap made from a blob
+   * carries no origin, so nothing it is drawn into is tainted. The <img> stays
+   * behind it as the fallback for the case where a fetch is the one that is
+   * refused. Still no background script needed. */
+  async function viaFetch(url) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), LOAD_TIMEOUT);
+    try {
+      // "omit" matters: the CDN answers an extension-principal request with
+      // `Access-Control-Allow-Origin: *`, which a credentialed request may not
+      // use. Nothing here wants the cookies anyway.
+      const res = await fetch(url, { credentials: "omit", signal: ctl.signal });
+      if (!res.ok) throw new Error(`cover fetch failed: ${res.status}`);
+      return await createImageBitmap(await res.blob());
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function viaImage(url) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      const timer = setTimeout(() => reject(new Error("cover load timed out")), 8000);
+      const timer = setTimeout(() => reject(new Error("cover load timed out")), LOAD_TIMEOUT);
       img.onload = () => { clearTimeout(timer); resolve(img); };
       img.onerror = () => { clearTimeout(timer); reject(new Error("cover failed to load")); };
       img.src = url;
     });
   }
 
-  function readPixels(img) {
+  async function loadCover(url) {
+    try {
+      return await viaFetch(url);
+    } catch {
+      return await viaImage(url);
+    }
+  }
+
+  function readPixels(source) {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = SAMPLE;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
+    ctx.drawImage(source, 0, 0, SAMPLE, SAMPLE);
     return ctx.getImageData(0, 0, SAMPLE, SAMPLE).data;
   }
 
@@ -263,9 +301,13 @@ YTMD.palette = (() => {
 
     let tokens;
     try {
-      const img = await loadImage(url);
-      const { ranked, monochrome } = rank(readPixels(img));
-      tokens = ranked.length ? build(ranked, monochrome) : { ...DEFAULT };
+      const source = await loadCover(url);
+      try {
+        const { ranked, monochrome } = rank(readPixels(source));
+        tokens = ranked.length ? build(ranked, monochrome) : { ...DEFAULT };
+      } finally {
+        source.close?.();     // an ImageBitmap holds its own decoded copy
+      }
     } catch (err) {
       console.warn("[YTM Ambient Display] palette extraction failed:", err.message);
       tokens = { ...DEFAULT };
