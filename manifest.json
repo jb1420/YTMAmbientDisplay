@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YTM Ambient Display",
-  "version": "0.1.0",
-  "description": "YouTube Music을 앨범 커버 색으로 물든 전체화면으로 봅니다. 가사나 대기열을 곁에 띄울 수 있고, 재생 컨트롤은 항상 보입니다.",
+  "version": "0.2.0",
+  "description": "YouTube Music을 앨범 커버 색으로 물든 전체화면으로 봅니다. 가사나 대기열을 곁에 띄울 수 있고, 재생 컨트롤은 항상 보입니다. Google·YouTube 공식 제품이 아닙니다.",
   "permissions": [
     "storage"
   ],
