@@ -554,6 +554,25 @@
   color: var(--ink-faint);
 }
 
+/* Where the chosen queue ends and autoplay begins. A rule rather than a heading:
+   the numbering runs straight through it, because everything below is still
+   going to play -- the only thing this says is who picked it. */
+.qdiv {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 10px 8px 4px;
+  font: 400 10.4px/1.6 var(--sans);
+  letter-spacing: .16em;
+  color: var(--ink-faint);
+}
+.qdiv::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ink-ghost);
+}
+
 .qrow[aria-current="true"] .qtitle { color: var(--ink); font-weight: 600; }
 .qrow[aria-current="true"] .qnum { color: var(--ink); }
 

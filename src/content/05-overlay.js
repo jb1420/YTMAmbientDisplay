@@ -601,7 +601,8 @@ YTMD.Overlay = (() => {
       return items.some((it, n) =>
         it.title !== prev[n].title ||
         it.artist !== prev[n].artist ||
-        !!it.current !== prev[n].current
+        !!it.current !== prev[n].current ||
+        !!it.autoplay !== prev[n].autoplay
       );
     }
 
@@ -612,13 +613,26 @@ YTMD.Overlay = (() => {
       // separator character is one a track title is allowed to contain.
       if (!this._queueChanged(items)) return;
       this._lastQueue = items.map((i) => ({
-        title: i.title, artist: i.artist, current: !!i.current,
+        title: i.title, artist: i.artist,
+        current: !!i.current, autoplay: !!i.autoplay,
       }));
 
       const playing = !this._playback.paused;
       const frag = document.createDocumentFragment();
+      let markedAutoplay = false;
 
       items.forEach((item, index) => {
+        // One list, one run of numbers -- these tracks are going to play. The
+        // rule is only there to say where the listener's queue stopped and
+        // YouTube Music's guessing started.
+        if (item.autoplay && !markedAutoplay) {
+          markedAutoplay = true;
+          const rule = document.createElement("li");
+          rule.className = "qdiv";
+          rule.textContent = "자동재생";
+          frag.appendChild(rule);
+        }
+
         const li = document.createElement("li");
         const row = document.createElement("button");
         row.className = "qrow";

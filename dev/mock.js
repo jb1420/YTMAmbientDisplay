@@ -47,8 +47,10 @@ globalThis.MOCK = (() => {
     { title: "밤의 가장자리에서 우리는 오래 머물렀다", artist: "긴 제목 테스트", duration: "4:12" },
     { title: "夜明けまでもう少しだけこのままでいさせて", artist: "テストアーティスト", duration: "3:37" },
     { title: "Grey Room", artist: "Placeholder Ensemble", duration: "2:28" },
-    { title: "Bright Field", artist: "Placeholder Ensemble", duration: "3:04" },
-    { title: "Closing Frame", artist: "Placeholder Ensemble", duration: "0:37" },
+    // The autoplay tail: shown only for a song playing on its own, numbered in
+    // the same run as everything above it, with one rule to mark where it began.
+    { title: "Bright Field", artist: "Placeholder Ensemble", duration: "3:04", autoplay: true },
+    { title: "Closing Frame", artist: "Placeholder Ensemble", duration: "0:37", autoplay: true },
   ];
 
   const tracks = [
