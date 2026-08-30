@@ -324,7 +324,13 @@ YTMD.Overlay = (() => {
       // Both are extension-resource fetches; run them together rather than
       // making the mount wait out two round trips in sequence.
       const [css] = await Promise.all([
-        fetch(`${this.assetsBase}/ui/overlay.css`).then((r) => r.text()),
+        // Revalidated rather than served from the cache. Reloading an unpacked
+        // extension swaps the files on disk but does not reliably drop what the
+        // HTTP cache is holding for its own resource URLs, so an edit to the
+        // sheet can go missing while every earlier edit is still there -- the
+        // sheet looks current except for whatever was changed last.
+        fetch(`${this.assetsBase}/ui/overlay.css`, { cache: "no-cache" })
+          .then((r) => r.text()),
         ensureFont(this.assetsBase),
       ]);
       // The stylesheet is adopted, not linked, so relative url() would resolve
