@@ -80,23 +80,33 @@
  * rules of their own because the fitter multiplies each by --fit, and a calc()
  * can only scale a single value. */
 .root[data-panel="none"] {
-  --art-size: min(60vh, 32vw);
+  --art-size: min(58vh, 34.5vw);
   /* Written out in viewport units rather than as a percentage so --art-w below
    * stays a plain length: a width that mixes px and % across the two states is
    * one the browser refuses to interpolate, and the sleeve snaps instead of
    * moving. */
   --stage-width: min(1280px, calc(100vw - 2 * var(--pad-x)));
   --art-w: min(var(--art-size), calc(.46 * var(--stage-width)));
-  --title-size: clamp(30px, 3.2vw, 58px);
-  --artist-size: clamp(16px, 1.45vw, 25.6px);
-  --album-size: clamp(14.4px, 1.15vw, 19.2px);
+  /* Nothing shares the screen with the sleeve here, so all three lines run a
+   * step larger than in the open state -- the words are the panel. The fitter
+   * still steps any of them back down when the text is too long for the row.
+   *
+   * The three sizes are one proportion, not three independent choices: artist
+   * lands at roughly .51 of the title and album at .43, which is a much
+   * shallower drop than a document hierarchy would take. At this size the block
+   * is read across a room, and a tier that falls away fast is a tier that stops
+   * being legible two lines in. */
+  --title-size: clamp(40px, 5.45vw, 104px);
+  --artist-size: clamp(21px, 2.8vw, 52px);
+  --album-size: clamp(18px, 2.35vw, 44px);
 }
 .root:not([data-panel="none"]) {
   --art-size: min(40vh, 27vw);
   --art-w: var(--art-size);
   --title-size: clamp(24px, 2.35vw, 41.6px);
-  --artist-size: clamp(14.4px, 1.05vw, 18.4px);
-  --album-size: 14.4px;
+  /* Same .51/.43 proportion as the closed state, a size down. */
+  --artist-size: clamp(16px, 1.2vw, 21.2px);
+  --album-size: clamp(13.5px, 1vw, 17.9px);
 }
 
 /* ------------------------------------------------------------ background -- */
@@ -396,7 +406,7 @@
  * pair is nudged off the screen's exact centre together -- shifting the words
  * alone would just reopen the gap the centring closed. */
 .root[data-panel="none"] .stage-inner {
-  transform: translateX(clamp(12px, 2vw, 40px));
+  transform: translateX(clamp(4px, .8vw, 18px));
 }
 
 /* Title, artist and album, one line each -- sized from the state's token and
@@ -413,12 +423,57 @@
   font-size: calc(var(--title-size) * var(--fit, 1));
   font-weight: 700;
   letter-spacing: -.03em;
-  line-height: 1.06;
+  line-height: 1.02;
   transition: font-size 640ms var(--ease);
+  /* 1.02 is tighter than the font's own line box -- Pretendard's ascent and
+   * descent come to about 1.21em together -- so roughly .09em of every line
+   * hangs below the box the leading gives it. That is the look the title is
+   * meant to have, but the clamp below needs `overflow: hidden`, and hidden
+   * cuts exactly there: the tails of g, y, p and the lower strokes of a Korean
+   * syllable get shaved off the last line. Firefox draws it that way; Chrome's
+   * webkit-box happens to leave the ink alone, which is why it only showed on
+   * one engine.
+   *
+   * Overflow clips at the padding edge, not the content edge, so a strip of
+   * bottom padding is room the clip cannot take. The matching negative margin
+   * is what keeps that free: it collapses with .artist's margin-top below, so
+   * the gap between the two lines gives back exactly what the padding added
+   * and the block reads the same as before. */
+  padding-bottom: .14em;
+  margin-bottom: -.14em;
 }
 
+/* "(feat. …)" is a credit, not part of the name of the song -- set it down a
+ * tier, on a line of its own, so the title reads as the title. Sized in em so
+ * it follows both the state's --title-size and whatever --fit the fitter
+ * settles on. The <br> in front of it comes from paintTitle().
+ *
+ * The line box it lands in is still the title's -- the block's strut sets the
+ * height whatever the span's own size is -- which is what keeps the fitter's
+ * height-over-line-height count exact across the two sizes. */
+.title .feat {
+  font-size: .50em;
+  font-weight: 500;
+  letter-spacing: -.01em;
+  color: var(--ink-dim);
+  /* The credit belongs to the line above it, so it is pulled up tight against
+   * it -- the title and its credit are one block, and the open space in the
+   * meta column all goes below them, in front of the artist.
+   *
+   * A paint offset rather than a negative margin, on purpose. The line box it
+   * sits in is the title's strut, and the fitter counts lines by dividing the
+   * title's height by that line-height; anything that changed the box would
+   * make the count wrong. `top` moves the ink and leaves the geometry alone. */
+  position: relative;
+  top: -.45em;
+}
+
+/* The one wide gap in the block. Title and credit are pulled together above it
+ * and the album sits close under the artist below it, so this single break is
+ * what separates "what the song is" from "who it is by" -- one seam instead of
+ * three even gaps. */
 .artist {
-  margin: .5em 0 0;
+  margin: 1.2em 0 0;
   font-size: calc(var(--artist-size) * var(--fit, 1));
   font-weight: 500;
   letter-spacing: -.005em;
@@ -435,6 +490,11 @@
   color: var(--ink-faint);
 }
 .album:empty { display: none; }
+/* Bracketed as a pseudo-element rather than baked into the text, so the
+ * fitter's `textContent.trim()` check and the `:empty` rule above still see
+ * the bare album name and hide correctly when there is none. */
+.album::before { content: "["; }
+.album::after { content: "]"; }
 
 :is(.title, .artist, .album) {
   word-break: keep-all;
@@ -444,6 +504,10 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* The credit's own line is a line the title did not ask for, so it is given
+ * back: two for the name, plus the one the break spent. Tied to the <br> and
+ * not to .feat so it matches the floor the fitter counts. */
+.title:has(br) { -webkit-line-clamp: 3; }
 
 /* Measuring runs with the size transition off: mid-transition the computed
  * font-size is a value the text is passing through, and lines counted against
@@ -835,7 +899,7 @@
   }
   .root:not([data-panel="none"]) { --art-size: min(26vh, 60vw); }
   /* No room for the row -- the sleeve goes back on top of the words, still
-   * centred so the two states differ in arrangement and not in axis. */
+     centred so the two states differ in arrangement and not in axis. */
   .root[data-panel="none"] {
     --art-size: min(44vh, 72vw);
     --stage-width: var(--art-size);

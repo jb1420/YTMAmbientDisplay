@@ -141,6 +141,55 @@ YTMD.Overlay = (() => {
   const FIT_KEEP_ONE = [1, .94, .88];
   const FIT_ALLOW_TWO = [1, .94, .88, .8, .72];
 
+  /* ----------------------------------------------------------- featuring -- */
+
+  /* The featuring credit inside a title -- "(feat. …)", "[Feat. …]", or a bare
+   * "feat. …" running to the end of the line. Two shapes, because they end
+   * differently: the bracketed one stops at its closing bracket and can sit
+   * mid-title ("Song (feat. A) - Remix"), the bare one only ever trails.
+   *
+   * "featuring" is listed first: `feat\b` would not match it (the boundary
+   * fails against the "u"), but ordering it first keeps that from being a
+   * detail the next reader has to work out. "with" is deliberately absent --
+   * it is a word titles use for themselves.
+   *
+   * The bare form has to follow a space, so a title that simply opens with the
+   * word ("Featuring The Band") is not read as one long credit and set, whole,
+   * in the small tier. A credit always has a title in front of it. */
+  const FEAT_RE = new RegExp(
+    "[(\\[]\\s*(?:featuring|feat|ft)\\b\\.?[^)\\]]*[)\\]]" +
+    "|(?<=\\s)(?:featuring|feat|ft)\\b\\.?\\s+\\S.*$",
+    "gi"
+  );
+
+  /* Writes `text` into `el` with any featuring credit wrapped in `.feat`, which
+   * the sheet sets a tier smaller. Nodes rather than innerHTML: the title comes
+   * off the page, and it is never worth handing page text to a parser.
+   *
+   * A credit always starts its own line. The break is a <br> rather than a
+   * block span because the title is a -webkit-box -- a block child would become
+   * a box item and the line clamp would count boxes, not lines -- and because
+   * the fitter can then read the floor straight off the element: one line per
+   * break, whatever the text does. The whitespace the credit was separated by
+   * is dropped; the break is doing that job now. */
+  function paintTitle(el, text) {
+    el.replaceChildren();
+    let at = 0;
+    for (const m of text.matchAll(FEAT_RE)) {
+      const head = text.slice(at, m.index).replace(/\s+$/, "");
+      if (head) el.append(head);
+      // Nothing in front of it on the first pass means the title *is* the
+      // credit; an opening blank line would be the only thing it announced.
+      if (el.firstChild) el.append(document.createElement("br"));
+      const span = document.createElement("span");
+      span.className = "feat";
+      span.textContent = m[0];
+      el.append(span);
+      at = m.index + m[0].length;
+    }
+    if (at < text.length) el.append(text.slice(at));
+  }
+
   /* ----------------------------------------------------------------- tilt -- */
 
   /* The sleeve is a physical object: it can be pushed, and it catches the light
@@ -509,11 +558,18 @@ YTMD.Overlay = (() => {
      * of artists past the point where it wraps anyway costs legibility and buys
      * nothing. Whatever is still over after the last step the sheet ellipsizes.
      *
+     * "One line" is really "as few lines as this text can occupy": a title with
+     * a featuring credit under it carries a forced break, so its floor is two
+     * and its wrap allowance three. Squeezing it against a floor it can never
+     * reach would drive every such title down the whole ladder for nothing.
+     *
      * @param {HTMLElement} el
      */
     _fit(el) {
       el.style.removeProperty("--fit");
       if (!this.isOpen || !el.textContent.trim()) return;
+
+      const floor = 1 + el.getElementsByTagName("br").length;
 
       const measured = new Map();
       const linesAt = (scale) => {
@@ -525,15 +581,17 @@ YTMD.Overlay = (() => {
         // limit, so its height reports the limit rather than what the text
         // needs, and every size over would look like it fits.
         el.style.setProperty("-webkit-line-clamp", "unset");
-        const height = el.scrollHeight;
+        // .title carries bottom padding so `overflow: hidden` cannot shave its
+        // descenders; that padding is in scrollHeight and is not a line.
+        const height = el.scrollHeight - (parseFloat(cs.paddingBottom) || 0);
         el.style.removeProperty("-webkit-line-clamp");
         const lines = lh > 0 ? Math.round(height / lh) : 1;
         measured.set(scale, lines);
         return lines;
       };
 
-      const scale = FIT_KEEP_ONE.find((s) => linesAt(s) <= 1)
-        ?? FIT_ALLOW_TWO.find((s) => linesAt(s) <= 2)
+      const scale = FIT_KEEP_ONE.find((s) => linesAt(s) <= floor)
+        ?? FIT_ALLOW_TWO.find((s) => linesAt(s) <= floor + 1)
         ?? FIT_ALLOW_TWO[FIT_ALLOW_TWO.length - 1];
       el.style.setProperty("--fit", String(scale));
     }
@@ -593,7 +651,7 @@ YTMD.Overlay = (() => {
     }
 
     setTrack({ title = "", artist = "", album = "", artUrl = null } = {}) {
-      this.el.title.textContent = title;
+      paintTitle(this.el.title, title);
       this.el.title.title = title;
       this.el.artist.textContent = artist;
       this.el.album.textContent = album;
