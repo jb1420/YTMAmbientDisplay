@@ -5,8 +5,15 @@ Chrome and Firefox, one codebase, no build step.
 
 - A side panel showing either lyrics or the queue — one at a time, or neither
   (chevron opens and closes it; the section heading switches between the two)
+- The queue carries autoplay's tail on the end of it, under one rule, numbered
+  in the same run — but only for a song playing on its own, never on an album
+  or a playlist, where the tracklist is the point
+- Lyrics that follow the song: the current line is lit and the column scrolls
+  itself, wherever timed lyrics can be found for the track
 - Play/pause, previous, next and a scrubbable progress bar, always visible
 - Large title and artist
+- The cover as a physical sleeve: it turns in 3D under the pointer and catches
+  a highlight where you push it. Still whenever nobody is touching it
 - Background gradient sampled from the cover art
 - Master on/off in the toolbar popup
 
@@ -25,6 +32,51 @@ pick this folder.
 
 Then open <https://music.youtube.com>, play something, and press the fullscreen
 button in the player bar (left of the expand button).
+
+### Shortcuts
+
+On any YouTube Music page, as long as you are not typing in a field:
+
+| Key | |
+| --- | --- |
+| `G` | open the display, or close it if it is already open |
+| `C` | lyrics panel — again to hide it |
+| `Q` | queue panel — again to hide it |
+| `[` `]` | nudge the lyrics 0.1s earlier or later |
+
+`C` and `Q` only apply while the display is open, `[` and `]` only while the
+lyrics panel is showing. They match on physical key, so they still work with a
+Korean IME switched on.
+
+### Lyrics
+
+Two sources, tried in this order:
+
+1. **[LRCLIB](https://lrclib.net)** — a free, crowdsourced database of LRC
+   files, meaning a timestamp on every line. This is the only one of the two
+   that can produce lyrics that follow the song.
+2. **YouTube Music's own side panel** — the same scrape this has always done.
+   No timings, so it is shown as one block, exactly as before.
+
+If LRCLIB has the track but only as plain text, the side panel still wins: a
+track LRCLIB cannot sync looks precisely the way it did before any of this
+existed.
+
+**What leaves the machine.** With the lookup on, the track's title, artist,
+album and length go to `lrclib.net` — once per track, at most two requests,
+cached for the session. No cookies and no referrer go with them, so nothing
+identifies the listener or says which page they are on. Nothing else in the
+extension talks to a network at all.
+
+Turn it off in the toolbar popup and the request is never made; lyrics then come
+from YouTube Music alone. There is a switch for click-a-line-to-seek in the same
+place. [PRIVACY.md](PRIVACY.md) says the same thing in full, and is what the
+store listings point at.
+
+**When the timing is off.** LRCLIB's timestamps are contributed, and some run a
+few hundred milliseconds early or late. `[` and `]` shift the lyrics against the
+clock in 0.1s steps while the display is open, up to ±5s, and the correction is
+saved — a database that runs early on one track tends to run early on the next.
 
 ### Fonts
 
@@ -60,8 +112,8 @@ src/lib/api.js           browser shim + settings store
 src/content/
   01-adapter.js          the only file that knows YouTube Music's DOM
   02-palette.js          cover -> gradient + ink tokens
-  03-lyrics.js           side-panel scrape, cached per track
-  04-queue.js            queue read, with the A/V duplicate fix
+  03-lyrics.js           LRCLIB lookup + side-panel scrape, cached per track
+  04-queue.js            queue read: A/V duplicate fix, autoplay tail merge
   05-overlay.js          the display -- pure UI, no YTM and no chrome.*
   06-main.js             bootstrap and wiring
 src/ui/
@@ -81,11 +133,25 @@ checks, and loads the file itself through the `FontFace` API if the declarative
 route did not take — a face built from an `ArrayBuffer` has no URL left for a
 policy to object to.
 
-There is **no background script**. Colour extraction works because
-googleusercontent serves cover art with a permissive CORS header, so
-`crossOrigin = "anonymous"` keeps the canvas untainted. That is what lets one
-manifest serve both Chrome MV3 and Firefox MV3 — the two disagree about
-`background.service_worker` vs `background.scripts`, and this sidesteps it.
+There is **no background script**, and the only permission is `storage`. Colour
+extraction works because googleusercontent serves cover art with a permissive
+CORS header, so the content script can pull the bytes down itself; the lyrics
+lookup works for the same reason, and needs no `host_permissions` either.
+LRCLIB answers with `Access-Control-Allow-Origin: *`, and YouTube Music's own
+CSP names `script-src`, `base-uri` and `object-src` but no `connect-src`, so
+there is nothing in the way. That is what lets one manifest serve both Chrome
+MV3 and Firefox MV3 — the two disagree about `background.service_worker` vs
+`background.scripts`, and this sidesteps it.
+
+Getting those bytes takes two different routes, though. The canvas has to stay
+untainted or `getImageData` throws, which normally means an
+`<img crossorigin="anonymous">` — and that is exactly what Firefox refuses from
+a content script: the load is attributed to the extension's principal and comes
+back `EncodingError: Invalid image request` before any header is read. So the
+cover is fetched instead and decoded through `createImageBitmap`, which carries
+no origin and so taints nothing; the `<img>` stays behind it as a fallback. The
+sleeve on screen never had this problem and never needed the attribute — it only
+paints the picture — so it just loads the URL plainly.
 
 ## Two decisions worth knowing
 
@@ -132,14 +198,57 @@ track into the same `<video>` before the current one ends, so about ten seconds
 from the end `duration` grows by the next track's length, and after the change
 `currentTime` continues from where the last track stopped rather than
 restarting. `#progress-bar`'s `aria-valuenow`/`aria-valuemax` are scoped to the
-track on screen, so those are the clock and `<video>` is only the fallback.
-Seeks are translated through the difference between the two.
+track on screen, so the bar is where the duration comes from.
+
+**Neither clock alone is good enough for a lyric line.** The bar reports whole
+seconds, and a second of slack is what puts a line on the wrong side of the
+beat; `<video>` is exact to the frame but is still carrying everything stitched
+in ahead of the current track. That stitched-in head is just the difference
+between the two, and it holds steady for as long as one track plays — so the
+position is `currentTime` minus that offset, and seeks are translated back
+through it.
+
+Estimating the offset is the whole trick. Because the bar floors, every reading
+of `currentTime - aria-valuenow` lands somewhere in `[offset, offset + 1)`, so
+**the smallest reading in a rolling window is the closest to the truth**. The
+bar ticks once a second against `timeupdate`'s four, so a four-second window
+always contains a reading taken just after a tick — accurate to about 250ms,
+settling within a second of a track starting. It resets on a track change and
+on a seek, which are the two moments the two clocks stop being a fixed distance
+apart. Until it has settled, the bar's own whole second is reported, because a
+guessed fraction is worse than no fraction.
+
+**The bar's length lags the title too, not just its position.** The settling
+window was written to stop a stale *position* reaching the screen, but
+`aria-valuemax` is equally stale for those two seconds, and unlike the position
+there is no sensible value to put in its place. A lyrics lookup matches on the
+running time, so keyed on the outgoing track's length it matched nothing — and
+"no match" is indistinguishable from a track nobody ever transcribed. The
+symptom was that the first track synced and every track after it quietly fell
+back. So the adapter reports `settling` and the lookup waits for a length that
+belongs to the track on screen.
+
+**Every side-panel tab renders into the same element.**
+`ytmusic-description-shelf-renderer` is not the lyrics shelf; it is the shelf,
+and the related tab fills it with the artist's biography. A search that took the
+first tab producing a shelf therefore put a biography on screen labelled as
+lyrics, and because the winning index was remembered, one wrong guess became
+every track for the rest of the session. The search now runs only when the
+lyrics tab gave no answer at all — a message renderer saying "no lyrics" is an
+answer — and what it finds is used once and not remembered.
 
 **Lyrics render lazily but then stick around.** Until the lyrics tab has been
 opened once, `ytmusic-description-shelf-renderer` does not exist, so reading
-lyrics means opening the tab and putting the side panel back. After it has
-rendered it stays in the DOM when you switch tabs away — so that round trip
-happens once per track rather than on every read.
+YouTube Music's own lyrics means opening the tab and putting the side panel
+back. After it has rendered it stays in the DOM when you switch tabs away — so
+that round trip happens once per track rather than on every read.
+
+**LRCLIB rejects `User-Agent`, not the request.** Its CORS preflight allows
+`content-type`, `x-user-agent` and `lrclib-client` — and nothing else. Setting
+`User-Agent` to identify the client, which is the obvious reading of its own
+guidance, fails the preflight instead of the request, and from inside the page
+that is indistinguishable from the service being down. `Lrclib-Client` is the
+header that works.
 
 **Never read UI strings.** On a Korean account the play button is
 `title="재생"` and the side-panel tabs read
@@ -177,3 +286,19 @@ changes nothing anyone can see, and warning about them would put a notice on
 screen for a display that is working. The report is also cleared as well as set,
 because the player bar is assembled piece by piece and the first reading often
 lands early.
+
+## Notices
+
+An independent, unofficial extension. Not made, endorsed or reviewed by Google
+LLC or YouTube; *YouTube Music* is their trademark and is named here only to say
+what site this works on.
+
+- [PRIVACY.md](PRIVACY.md) — what is stored, what leaves the machine, and how to
+  stop the one thing that does. This is the document the store listings point at.
+- [NOTICE.md](NOTICE.md) — attribution and third-party licences: Pretendard
+  under the OFL, LRCLIB, and the rights in the lyrics and cover art on screen.
+  It also records that this project has no licence of its own yet.
+
+Packaging note: the store build is `manifest.json`, `icons/` and `src/` — `dev/`
+and the documents are not part of it. `src/fonts/OFL.txt` is, and has to be:
+the OFL requires the licence to travel with the font.

@@ -1,13 +1,17 @@
 # Fonts
 
-One file, not checked in. Drop it here and the display picks it up on the next
-extension reload — nothing else to change.
+One file. Replacing it is a drop-in — the display picks it up on the next
+extension reload, nothing else to change.
 
 | File | Family | Where to get it |
 |---|---|---|
 | `PretendardVariable.woff2` | Pretendard Variable | https://github.com/orioncactus/pretendard/releases → `pretendard-vXXXX.zip` → `web/variable/woff2/PretendardVariable.woff2` |
 
-OFL-1.1 licensed, so bundling it in an extension is fine.
+OFL-1.1 licensed, so bundling it in an extension is fine — but only *with the
+licence*: clause 2 requires the copyright notice and the licence text to travel
+with every copy. `OFL.txt` next to the font is that copy, and it has to stay in
+the packaged build, not just in the repo. Pretendard draws on Source, Inter and
+M PLUS 1, so the file carries four copyright lines, all of them required.
 
 ## Why this one
 

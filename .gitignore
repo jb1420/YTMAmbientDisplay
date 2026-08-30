@@ -1,4 +1,27 @@
+# Packaging output -- store uploads are built from a tag, never committed
+dist/
+build/
+*.zip
+*.xpi
+*.crx
+*.pem
+web-ext-artifacts/
+
+# Store credentials -- never commit these
+.env
+*.local.json
+.claude/settings.local.json
+
+# Tooling
 node_modules/
 *.log
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS
 .DS_Store
 Thumbs.db
+desktop.ini
