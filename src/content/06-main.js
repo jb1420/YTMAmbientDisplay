@@ -35,8 +35,8 @@
     const btn = document.createElement("button");
     btn.id = BUTTON_ID;
     btn.type = "button";
-    btn.title = "YTM Ambient Display 전체화면";
-    btn.setAttribute("aria-label", "YTM Ambient Display 전체화면");
+    btn.title = "YTM Ambient Display 전체화면 (G)";
+    btn.setAttribute("aria-label", "YTM Ambient Display 전체화면 (G)");
     btn.style.cssText = [
       "width:40px", "height:40px", "display:inline-grid", "place-items:center",
       "padding:0", "border:0", "border-radius:50%", "background:transparent",
@@ -156,6 +156,82 @@
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }
 
+  /* --------------------------------------------------------- shortcuts -- */
+
+  /* G toggles the display, C and Q pick a panel and turn it off again when the
+   * panel they name is already showing.
+   *
+   * Matched on `ev.code`, not `ev.key`: with a Korean IME on, the same physical
+   * keys report ㅎ/ㅊ/ㅂ, and the shortcuts have to keep working there. */
+  const PANEL_KEYS = { KeyC: "lyrics", KeyQ: "queue" };
+
+  /* [ and ] nudge the lyrics against the clock. Somebody only ever notices the
+   * drift while a song is playing, so the correction lives where they are
+   * rather than in the popup, and it is saved -- a database whose timings run
+   * early tends to run early on the next track too.
+   *
+   * The bracket keys sit at the same physical place on a Korean layout, so
+   * ev.code works here for the same reason it does for G and C. */
+  const NUDGE_KEYS = { BracketLeft: -100, BracketRight: 100 };
+  const NUDGE_LIMIT = 5000;
+  let nudgeTimer = null;
+
+  function nudgeLyrics(ms) {
+    const next = Math.max(-NUDGE_LIMIT,
+                          Math.min(NUDGE_LIMIT, state.settings.lyricsOffset + ms));
+    if (next === state.settings.lyricsOffset) return;
+    settings.write({ lyricsOffset: next });
+
+    // Borrowed, not built: the top bar already has a slot for a passing word,
+    // and reportDiagnostics() puts back whatever belonged there.
+    const shown = (next / 1000).toFixed(1);
+    overlay?.setDiagnostic(`가사 ${next > 0 ? "+" : ""}${shown}s`);
+    clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(reportDiagnostics, 1200);
+  }
+
+  function togglePanel(name) {
+    if (state.settings.panel === name) {
+      lastPanel = name;                    // what the chevron comes back to
+      settings.write({ panel: "none" });
+    } else {
+      settings.write({ panel: name });
+    }
+  }
+
+  /* YTM's search box and any other field the user is typing into keep their
+   * letters. composedPath() is what reaches inside the overlay's shadow root. */
+  function isTyping(ev) {
+    return ev.composedPath().some((node) => {
+      const tag = node?.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+             node?.isContentEditable;
+    });
+  }
+
+  function onShortcut(ev) {
+    if (!checkAlive()) return;           // orphaned: leave the key to YTM
+    if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+    if (ev.isComposing || isTyping(ev)) return;
+
+    if (ev.code === "KeyG") {
+      // The keypress is the user gesture that makes requestFullscreen() legal,
+      // so openDisplay() has to run on it directly.
+      if (state.open) closeDisplay();
+      else openDisplay();
+    } else if (state.open && ev.code in PANEL_KEYS) {
+      togglePanel(PANEL_KEYS[ev.code]);
+    } else if (state.open && state.settings.panel === "lyrics" && ev.code in NUDGE_KEYS) {
+      nudgeLyrics(NUDGE_KEYS[ev.code]);
+    } else {
+      return;
+    }
+
+    // Claimed before YTM's own single-letter shortcuts see it.
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+
   /* ------------------------------------------------------------- wiring -- */
 
   function applyPanel() {
@@ -268,10 +344,12 @@
     await ensureOverlay();
     startWatching();
     buttonTimer ??= keepButtonMounted();
+    window.addEventListener("keydown", onShortcut, true);
   }
 
   function disable() {
     closeDisplay();
+    window.removeEventListener("keydown", onShortcut, true);
     stopWatching();
     clearInterval(buttonTimer);
     buttonTimer = null;
