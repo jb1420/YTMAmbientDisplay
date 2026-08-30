@@ -62,12 +62,11 @@ redistribute it, and does not send it anywhere. Closing the tab ends it.
 ## This project
 
 Everything else here — the extension's own source, its icons, and the test
-covers in `dev/art/` — is © 2025 Jaebin.
+covers in `dev/art/` — is © 2026 Jaebin and licensed under the MIT License. The
+full text is in [LICENSE](LICENSE); the short of it is that anyone may use,
+change and redistribute it, provided the copyright notice and the licence go
+along with it, and that it comes with no warranty.
 
-**No licence has been granted yet.** Until one is added, the ordinary default
-applies: all rights reserved, and nobody else has permission to copy, modify or
-redistribute the source. That is fine for shipping a compiled extension to a
-store, and it is not fine for a public repository that wants contributions — so
-if this is going to be open source, add a `LICENSE` file (MIT is the usual
-choice for something this size) before or when the repository goes public.
-Adding one does not affect the font, which stays under the OFL either way.
+The MIT grant covers this project's own work only. Pretendard is not this
+project's to relicense: it stays under the OFL, on the terms above, wherever it
+travels.

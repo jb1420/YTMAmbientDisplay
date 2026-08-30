@@ -297,7 +297,8 @@ what site this works on.
   stop the one thing that does. This is the document the store listings point at.
 - [NOTICE.md](NOTICE.md) — attribution and third-party licences: Pretendard
   under the OFL, LRCLIB, and the rights in the lyrics and cover art on screen.
-  It also records that this project has no licence of its own yet.
+- [LICENSE](LICENSE) — MIT, for this project's own source. The font is not
+  covered by it and stays under the OFL.
 
 Packaging note: the store build is `manifest.json`, `icons/` and `src/` — `dev/`
 and the documents are not part of it. `src/fonts/OFL.txt` is, and has to be:
