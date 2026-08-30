@@ -13,8 +13,19 @@ globalThis.YTMD = globalThis.YTMD || {};
 YTMD.env = (() => {
   "use strict";
   const api = globalThis.browser ?? globalThis.chrome;
+
+  /* Reloading, updating or disabling the extension leaves the content script
+   * running in tabs that were already open, but every `chrome.*` call from it
+   * then throws "Extension context invalidated". `runtime.id` is the cheap
+   * probe: it reads undefined once the context is gone, and the getter itself
+   * can throw, hence the try. */
+  const alive = () => {
+    try { return api.runtime?.id != null; } catch { return false; }
+  };
+
   return {
     api,
+    alive,
     /** Absolute URL for a packaged file, e.g. url("src/ui") -> chrome-extension://.../src/ui */
     url: (path) => api.runtime.getURL(path),
   };
@@ -22,7 +33,7 @@ YTMD.env = (() => {
 
 YTMD.settings = (() => {
   "use strict";
-  const { api } = YTMD.env;
+  const { api, alive } = YTMD.env;
 
   // `panel` is one value rather than two booleans because lyrics and the queue
   // are mutually exclusive -- with two flags every writer would have to
@@ -43,11 +54,13 @@ YTMD.settings = (() => {
   // that disables it). Local is a fine fallback -- these are a few flags.
   const area = () => api.storage.sync ?? api.storage.local;
 
+  // An orphaned content script is an expected end state, not a fault worth
+  // logging on every keypress -- 06-main.js notices and shuts itself down.
   async function read() {
     try {
       return { ...DEFAULTS, ...(await area().get(DEFAULTS)) };
     } catch (err) {
-      console.warn("[YTM Ambient Display] could not read settings, using defaults:", err);
+      if (alive()) console.warn("[YTM Ambient Display] could not read settings, using defaults:", err);
       return { ...DEFAULTS };
     }
   }
@@ -56,7 +69,7 @@ YTMD.settings = (() => {
     try {
       await area().set(patch);
     } catch (err) {
-      console.warn("[YTM Ambient Display] could not save settings:", err);
+      if (alive()) console.warn("[YTM Ambient Display] could not save settings:", err);
     }
   }
 

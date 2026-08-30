@@ -61,6 +61,7 @@
    * disappears rather than injected once and trusted. */
   function keepButtonMounted() {
     const place = () => {
+      if (!checkAlive()) return;
       if (!state.settings.enabled) return;
       if (document.getElementById(BUTTON_ID)) return;
       const controls = document.querySelector(adapter.SEL.rightControls);
@@ -73,6 +74,30 @@
   }
 
   const removeButton = () => document.getElementById(BUTTON_ID)?.remove();
+
+  /* ---------------------------------------------------- orphaned script -- */
+
+  /* Reloading, updating or disabling the extension leaves this script running
+   * against a dead extension context: every settings write throws
+   * "Extension context invalidated", storage.onChanged never fires again, and
+   * the panel quietly stops responding while the keydown handler goes on
+   * swallowing G/C/Q that YTM would otherwise get.
+   *
+   * Nothing here can be revived -- only a page reload brings the new copy in --
+   * so the honest move is to take everything down and say so once. */
+  let orphaned = false;
+
+  function checkAlive() {
+    if (orphaned) return false;
+    if (env.alive()) return true;
+    orphaned = true;
+    disable();
+    console.warn(
+      "[YTM Ambient Display] 확장이 다시 로드되어 이 탭의 스크립트는 중지되었습니다. " +
+      "페이지를 새로고침하면 다시 동작합니다.",
+    );
+    return false;
+  }
 
   /* ------------------------------------------------------------ display -- */
 
