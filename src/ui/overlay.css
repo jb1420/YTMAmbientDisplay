@@ -67,6 +67,13 @@
   overflow: hidden;
   transition: background-color var(--swap) var(--ease), color var(--swap) var(--ease);
   -webkit-font-smoothing: antialiased;
+  /* Nothing here is a document. Every drag on this screen means something --
+   * the sleeve tilts, the bar scrubs -- and the one that lands on neither used
+   * to sweep a selection across the title and paint the cover blue behind it.
+   * Off at the root so it is off everywhere by default, then handed back to
+   * .meta alone, which is the only text worth copying off this screen. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Two states, two sets of proportions. The type sizes are tokens rather than
@@ -263,6 +270,10 @@
  * the cover ballooned to the width of the whole stage and then shrank into
  * place. Against the token it only ever moves between the two sizes it is
  * actually meant to have. */
+/* The wrap is the scene and holds the layout; .art-card is the object inside it
+ * and holds the shape. They were one box until the cover started turning: a
+ * card tilted under perspective pushes its near corners outside the square it
+ * occupies, and the clip that rounds the artwork's corners cut them off. */
 .art-wrap {
   position: relative;
   width: var(--art-w);
@@ -272,6 +283,21 @@
    * spare pixel, so there is no free space here for the margins to claim. */
   margin-inline: auto;
   aspect-ratio: 1;
+  /* Long enough that the tilt reads as depth rather than as a fisheye. Scaled
+   * off the cover's own width so the effect is the same object at any size --
+   * a fixed length would be a violent angle on the small sleeve and almost
+   * nothing on the large one. */
+  perspective: calc(var(--art-w) * 2.4);
+  transition:
+    width 640ms var(--ease),
+    transform 700ms var(--ease),
+    opacity 420ms var(--ease);
+}
+.art-wrap.is-changing { transform: scale(.965); opacity: .55; }
+
+.art-card {
+  position: absolute;
+  inset: 0;
   border-radius: 6px;
   overflow: hidden;
   background: color-mix(in oklab, var(--ink) 7%, transparent);
@@ -279,14 +305,14 @@
     0 2px 8px rgba(0, 0, 0, .3),
     0 22px 56px -12px rgba(0, 0, 0, .55),
     0 52px 120px -30px rgba(0, 0, 0, .45);
-  transition:
-    width 640ms var(--ease),
-    transform 700ms var(--ease),
-    opacity 420ms var(--ease);
+  /* Driven a frame at a time from 05-overlay.js. No transition: the loop is
+   * already easing these, and a second easing on top only adds lag. */
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(var(--lift, 1));
+  will-change: transform;
 }
 /* A sleeve has a tight corner and a lit edge -- the inner hairline is what makes
  * it read as an object sitting in the light rather than a flat swatch. */
-.art-wrap::after {
+.art-card::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -295,10 +321,53 @@
     inset 0 1px 0 rgba(255, 255, 255, .16),
     inset 0 0 0 1px rgba(255, 255, 255, .06);
   pointer-events: none;
+  z-index: 3;
 }
-.art-wrap.is-changing { transform: scale(.965); opacity: .55; }
 
-.art { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* ----------------------------------------------------------------- glare -- */
+
+/* One soft highlight, sitting wherever the pointer is (--mx/--my) and fading in
+ * and out with --holo, which the loop holds at 0 until the pointer arrives.
+ *
+ * White on `screen`, which is the one blend that can only ever add light. The
+ * cover is the picture; the glare is light landing on the sleeve holding it,
+ * and it has no business tinting or darkening any part of the artwork. */
+.art-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    farthest-corner circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, .38) 0%,
+    rgba(255, 255, 255, .12) 22%,
+    rgba(255, 255, 255, .03) 42%,
+    transparent 62%
+  );
+  mix-blend-mode: screen;
+  opacity: var(--holo, 0);
+  z-index: 2;
+}
+/* No artwork, nothing to light. The fallback sleeve is a near-transparent
+ * panel, so the highlight would land on whatever the background is showing
+ * through it -- not a lit object, a smudge. The tilt stays. */
+.art-card.is-empty .art-glare { display: none; }
+
+/* Pressing on the sleeve tilts it; it does not pick the picture up. Chrome's
+ * native image drag would otherwise start on the first pixel of movement, hand
+ * the pointer to the drag, and leave the cover stuck at whatever angle it was
+ * at -- a drag ends without a pointerleave. `draggable="false"` on the element
+ * is the switch that actually stops it and -webkit-user-drag is the same
+ * instruction to the same engine; both are here because the attribute is easy
+ * to lose in a template edit and this rule is next to the thing it protects.
+ * (Not inherited, so it belongs on the image, not on the card.) */
+.art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  -webkit-user-drag: none;
+}
 .art[hidden] { display: none; }
 
 .art-fallback {
@@ -311,7 +380,17 @@
 .art-fallback[hidden] { display: none; }
 .art-fallback svg { width: 26%; height: 26%; }
 
-.meta { margin-top: clamp(20px, 2.6vh, 36px); min-width: 0; text-align: center; }
+/* The one place on this screen that is text a person might want to take with
+ * them -- a title to search, an artist to look up. Selection comes back on for
+ * the three lines only; the sleeve beside them stays unselectable, so a sweep
+ * that starts here can never drag the picture into the highlight with it. */
+.meta {
+  margin-top: clamp(20px, 2.6vh, 36px);
+  min-width: 0;
+  text-align: center;
+  user-select: text;
+  -webkit-user-select: text;
+}
 
 /* Closed, the sleeve and the three centred lines read as one object, so the
  * pair is nudged off the screen's exact centre together -- shifting the words
@@ -680,7 +759,6 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: .04em;
   color: var(--ink-faint);
-  user-select: none;
 }
 
 /* Height is the whole feedback channel here -- there is no knob. Hover lifts it

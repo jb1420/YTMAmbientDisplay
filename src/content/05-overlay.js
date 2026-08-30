@@ -65,8 +65,11 @@ YTMD.Overlay = (() => {
         <section class="stage">
           <div class="stage-inner">
             <div class="art-wrap">
-              <img class="art" alt="" hidden>
-              <div class="art-fallback">${ICON.disc}</div>
+              <div class="art-card is-empty">
+                <img class="art" alt="" hidden draggable="false">
+                <div class="art-fallback">${ICON.disc}</div>
+                <div class="art-glare"></div>
+              </div>
             </div>
             <div class="meta">
               <h1 class="title"></h1>
@@ -137,6 +140,23 @@ YTMD.Overlay = (() => {
    * the job is only to get it inside two. */
   const FIT_KEEP_ONE = [1, .94, .88];
   const FIT_ALLOW_TWO = [1, .94, .88, .8, .72];
+
+  /* ----------------------------------------------------------------- tilt -- */
+
+  /* The sleeve is a physical object: it can be pushed, and it catches the light
+   * where you push it. Both only happen under the pointer -- unattended it is a
+   * still cover, because the background wash is the one thing on this screen
+   * that moves by itself and a second slow drift next to it is one too many.
+   *
+   * It lives in the rAF loop rather than in CSS because the pose has to be
+   * interpolated from wherever it currently is, including from halfway back to
+   * flat when the pointer returns. */
+  const TILT_MAX = 9;         // degrees at the very edge of the cover
+  const LIFT_HOVER = 1.024;
+
+  // Per-frame approach, as a fraction of the remaining distance at 60fps.
+  const EASE_POINTER = .18;
+  const EASE_REST = .05;
 
   /* ---------------------------------------------------------------- lyrics -- */
 
@@ -228,6 +248,18 @@ YTMD.Overlay = (() => {
       this._lyricHold = 0;       // auto-scroll stands down until this timestamp
       this._lyricTimer = 0;
 
+      this._motion = true;
+      // The tilt is drawn from script, so the sheet's reduced-motion block
+      // cannot reach it -- the query has to be asked here as well, and kept
+      // current: on Windows this flips the moment the OS setting does.
+      this._motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
+      this._reduceMotion = this._motionQuery.matches;
+      this._onMotionQuery = (ev) => (this._reduceMotion = ev.matches);
+      this._motionQuery.addEventListener("change", this._onMotionQuery);
+      this._pointer = null;      // client coords while the cover is hovered
+      this._tilt = { rx: 0, ry: 0, mx: 50, my: 50, holo: 0, lift: 1 };
+      this._tiltAt = 0;          // timestamp of the last tilt frame
+      this._tiltSig = "";        // what was last written to the card
     }
 
     /* ------------------------------------------------------------ mount -- */
@@ -267,6 +299,7 @@ YTMD.Overlay = (() => {
         washA: $('.washes[data-slot="a"]'),
         washB: $('.washes[data-slot="b"]'),
         artWrap: $(".art-wrap"),
+        artCard: $(".art-card"),
         art: $(".art"),
         artFallback: $(".art-fallback"),
         stageInner: $(".stage-inner"),
@@ -310,6 +343,16 @@ YTMD.Overlay = (() => {
 
       this._wireLyrics();
       this._wireScrub();
+
+      // Only the coordinates are stored here; the rect they are measured
+      // against is read once per frame in _stepTilt, so a fast pointer cannot
+      // force a layout flush per event.
+      const aim = (ev) => { this._pointer = { x: ev.clientX, y: ev.clientY }; };
+      this.el.artWrap.addEventListener("pointerenter", aim);
+      this.el.artWrap.addEventListener("pointermove", aim);
+      this.el.artWrap.addEventListener("pointerleave", () => (this._pointer = null));
+      // A touch ends without a leave in some browsers; drop the hold either way.
+      this.el.artWrap.addEventListener("pointercancel", () => (this._pointer = null));
 
       // Escape leaves fullscreen on its own; this covers the windowed case.
       this._onKey = (ev) => {
@@ -409,6 +452,7 @@ YTMD.Overlay = (() => {
       clearTimeout(this._lyricTimer);
       window.removeEventListener("keydown", this._onKey, true);
       window.removeEventListener("resize", this._onResize);
+      this._motionQuery.removeEventListener("change", this._onMotionQuery);
       this.host?.remove();
       this.host = null;
       this.shadow = null;
@@ -429,6 +473,8 @@ YTMD.Overlay = (() => {
       // fit that ran on the last setTrack was a no-op.
       this._fitMeta();
       this._paint();
+      // No elapsed time to catch up on: the loop stopped while this was closed.
+      this._tiltAt = 0;
       this._loop();
     }
 
@@ -436,6 +482,8 @@ YTMD.Overlay = (() => {
       if (!this.isOpen) return;
       this.isOpen = false;
       cancelAnimationFrame(this._raf);
+      // Nothing will report the pointer leaving a hidden cover.
+      this._pointer = null;
       if (this.host) this.host.style.display = "none";
     }
 
@@ -510,7 +558,10 @@ YTMD.Overlay = (() => {
 
     /* ---------------------------------------------------------- setters -- */
 
+    /* Governs the background drift in CSS and the cover's tilt in the loop --
+     * one switch, because "움직임" is one thing to the person reading it. */
     setMotion(on) {
+      this._motion = !!on;
       this.el.root.dataset.motion = on ? "on" : "off";
     }
 
@@ -550,13 +601,21 @@ YTMD.Overlay = (() => {
       this._setArt(artUrl);
     }
 
+    /* The glare only makes sense over artwork. The fallback sleeve is nearly
+     * transparent, so a highlight blended into it lands on whatever the
+     * background happens to be showing through -- not a lit object, a smudge. */
+    _showArt(present) {
+      this.el.art.hidden = !present;
+      this.el.artFallback.hidden = present;
+      this.el.artCard.classList.toggle("is-empty", !present);
+    }
+
     async _setArt(url) {
       if (url === this._artUrl) return;
       this._artUrl = url;
 
       if (!url) {
-        this.el.art.hidden = true;
-        this.el.artFallback.hidden = false;
+        this._showArt(false);
         return;
       }
 
@@ -575,12 +634,10 @@ YTMD.Overlay = (() => {
         await img.decode();
         if (this._artUrl !== url) return;   // a newer track won the race
         this.el.art.src = url;
-        this.el.art.hidden = false;
-        this.el.artFallback.hidden = true;
+        this._showArt(true);
       } catch {
         if (this._artUrl !== url) return;
-        this.el.art.hidden = true;
-        this.el.artFallback.hidden = false;
+        this._showArt(false);
       } finally {
         if (this._artUrl === url) this.el.artWrap.classList.remove("is-changing");
       }
@@ -776,12 +833,74 @@ YTMD.Overlay = (() => {
     /* --------------------------------------------------------- painting -- */
 
     _loop() {
-      const step = () => {
+      const step = (now) => {
         if (!this.isOpen) return;
         if (!this._playback.paused || this._scrub !== null) this._paint();
+        this._stepTilt(now);
         this._raf = requestAnimationFrame(step);
       };
       this._raf = requestAnimationFrame(step);
+    }
+
+    /* One frame of the cover's 3D: the pose it is heading for -- under the
+     * pointer, or flat -- and a fraction of the way there, so arriving and
+     * leaving are both eased and neither is a cut. */
+    _stepTilt(now) {
+      const card = this.el.artCard;
+      if (!card) return;
+
+      const still = !this._motion || this._reduceMotion;
+      // Flat, unlit and unlifted, which is also the resting pose.
+      let rx = 0, ry = 0, mx = 50, my = 50, holo = 0, lift = 1;
+
+      if (this._pointer && !still) {
+        const r = this.el.artWrap.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          const nx = clamp((this._pointer.x - r.left) / r.width, 0, 1);
+          const ny = clamp((this._pointer.y - r.top) / r.height, 0, 1);
+          // Pushed, not pulled: the corner under the pointer is the one that
+          // goes back, which is the reading a hand on a real sleeve gives.
+          rx = (.5 - ny) * 2 * TILT_MAX;
+          ry = (nx - .5) * 2 * TILT_MAX;
+          mx = nx * 100;
+          my = ny * 100;
+          holo = 1;
+          lift = LIFT_HOVER;
+        }
+      }
+
+      // Frame-rate independent: the constants read as "at 60fps", and a 144Hz
+      // screen takes the same time to arrive, in smaller steps.
+      const dt = this._tiltAt ? clamp(now - this._tiltAt, 0, 64) : 16.7;
+      this._tiltAt = now;
+      const base = this._pointer && !still ? EASE_POINTER : EASE_REST;
+      const k = 1 - (1 - base) ** (dt / 16.7);
+
+      const t = this._tilt;
+      t.rx += (rx - t.rx) * k;
+      t.ry += (ry - t.ry) * k;
+      t.mx += (mx - t.mx) * k;
+      t.my += (my - t.my) * k;
+      t.holo += (holo - t.holo) * k;
+      t.lift += (lift - t.lift) * k;
+
+      // Rounded first, then compared: at rest the lerp keeps producing new
+      // floats forever, and writing them would mean a style recalc every frame
+      // for a cover that is no longer moving.
+      const deg = (v) => v.toFixed(2);
+      const pct = (v) => v.toFixed(1);
+      const sig = `${deg(t.rx)} ${deg(t.ry)} ${pct(t.mx)} ${pct(t.my)}` +
+                  ` ${t.holo.toFixed(3)} ${t.lift.toFixed(4)}`;
+      if (sig === this._tiltSig) return;
+      this._tiltSig = sig;
+
+      const s = card.style;
+      s.setProperty("--rx", `${deg(t.rx)}deg`);
+      s.setProperty("--ry", `${deg(t.ry)}deg`);
+      s.setProperty("--mx", `${pct(t.mx)}%`);
+      s.setProperty("--my", `${pct(t.my)}%`);
+      s.setProperty("--holo", t.holo.toFixed(3));
+      s.setProperty("--lift", t.lift.toFixed(4));
     }
 
     /* Interpolates between the ~4Hz timeupdate events so the bar moves
