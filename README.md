@@ -1,3 +1,5 @@
+**English** · [한국어](README.ko.md)
+
 # YTM Ambient Display
 
 A fullscreen now-playing screen for YouTube Music, tinted by the album cover.
