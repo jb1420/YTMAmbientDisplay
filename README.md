@@ -293,6 +293,13 @@ An independent, unofficial extension. Not made, endorsed or reviewed by Google
 LLC or YouTube; *YouTube Music* is their trademark and is named here only to say
 what site this works on.
 
+**Written with Claude.** Much of this code was written with Claude as a
+collaborator. None of it shipped unread: every behaviour here was run and
+checked against a live, signed-in page — *Things that were not obvious* above is
+the record of what that checking turned up and had to be corrected. What the
+extension does, and what it refuses to do, are my decisions, and the
+responsibility for them is mine.
+
 - [PRIVACY.md](PRIVACY.md) — what is stored, what leaves the machine, and how to
   stop the one thing that does. This is the document the store listings point at.
 - [NOTICE.md](NOTICE.md) — attribution and third-party licences: Pretendard
@@ -300,6 +307,9 @@ what site this works on.
 - [LICENSE](LICENSE) — MIT, for this project's own source. The font is not
   covered by it and stays under the OFL.
 
-Packaging note: the store build is `manifest.json`, `icons/` and `src/` — `dev/`
-and the documents are not part of it. `src/fonts/OFL.txt` is, and has to be:
-the OFL requires the licence to travel with the font.
+Packaging note: the store build is everything in the repository except `dev/`,
+`todo.md` and the tooling that is not the extension — `.git`, `.gitignore`,
+`.claude`, `dist`. The documents travel with it on purpose: MIT asks that the
+licence accompany the source, the OFL asks the same of the font and
+`src/fonts/OFL.txt`, and a reviewer who finds PRIVACY.md inside the package has
+one fewer place to go looking.
