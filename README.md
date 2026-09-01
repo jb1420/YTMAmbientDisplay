@@ -105,6 +105,12 @@ bright cover. Regenerate them (and the extension icons) with:
 node dev/make-assets.js
 ```
 
+The same script draws the extension icon — a red-to-rose gradient tile with a
+pair of beamed eighth notes — as plain geometry, so there is no source SVG to
+keep in sync. `--glyph=ytm` swaps the notes for a "YTM" wordmark, which is
+legible at 48px and above but not at 16px; the proof sheets in `dev/art/icon-*`
+show both large and at a 16x zoom of the toolbar size.
+
 ## How it fits together
 
 ```
