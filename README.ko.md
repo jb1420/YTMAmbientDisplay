@@ -5,6 +5,20 @@
 YouTube Music을 위한 전체 화면 재생 화면. 앨범 커버에서 뽑아낸 색으로 물듭니다.
 Chrome과 Firefox, 코드베이스 하나, 빌드 단계 없음.
 
+[**Firefox에서 설치하기**](https://addons.mozilla.org/ko/firefox/addon/ytmusic-ambient-display/)
+&nbsp;·&nbsp;
+[![Firefox Add-ons](https://img.shields.io/amo/v/ytmusic-ambient-display?label=addons.mozilla.org&color=ff7139)](https://addons.mozilla.org/ko/firefox/addon/ytmusic-ambient-display/)
+[![Users](https://img.shields.io/amo/users/ytmusic-ambient-display?label=users&color=555)](https://addons.mozilla.org/ko/firefox/addon/ytmusic-ambient-display/)
+
+![커버와 제목, 아티스트가 앨범 아트에서 뽑아낸 그라디언트 위에 놓인 화면](docs/screenshots/display.webp)
+
+화면의 모든 색은 커버에서 나옵니다. 손으로 정해 둔 테마는 없습니다.
+
+| | |
+| --- | --- |
+| ![곡을 따라가는 가사, 현재 줄에 불이 들어와 있음](docs/screenshots/lyrics.webp) | ![자동재생 꼬리까지 이어서 번호가 매겨진 재생목록](docs/screenshots/queue.webp) |
+| **곡을 따라가는 가사.** LRCLIB의 타임스탬프 가사를 한 줄씩 밝히며 스스로 스크롤합니다. | **재생목록.** 자동재생으로 이어질 곡들을 꼬리에 붙여 하나의 번호로 잇습니다. |
+
 - 가사 또는 재생목록을 보여주는 사이드 패널 — 한 번에 하나씩, 또는 둘 다 끄기
   (셰브런으로 열고 닫고, 섹션 제목이 둘 사이를 전환합니다)
 - 재생목록은 자동재생으로 이어질 곡들을 꼬리에 붙여 하나의 규칙 아래 이어서
@@ -26,13 +40,23 @@ Chrome과 Firefox, 코드베이스 하나, 빌드 단계 없음.
 
 ## 설치
 
-빌드할 것이 없습니다 — 폴더를 그대로 불러오면 됩니다.
+**Firefox — Mozilla 부가 기능 사이트에서.** 이쪽이 공식 배포처입니다. Mozilla의
+검수를 거쳐 서명되어 있고, 업데이트도 알아서 받습니다:
 
-**Chrome** — `chrome://extensions` → 개발자 모드 켜기 → *압축해제된 확장 프로그램을
+> **<https://addons.mozilla.org/ko/firefox/addon/ytmusic-ambient-display/>**
+
+스토어 등록명은 **YTMusic Ambient Display**이고, 확장 ID는 `ytm-display@jb142`
+입니다. 내가 만든 물건이 맞는지 확인하려면 이 ID를 보면 됩니다. 그 밖의 경로로
+배포되는 것은 내 것이 아닙니다.
+
+**Chrome — 웹 스토어에는 없습니다.** 폴더를 그대로 불러오면 됩니다. 빌드할 것은
+없습니다. `chrome://extensions` → 개발자 모드 켜기 → *압축해제된 확장 프로그램을
 로드합니다* → 이 폴더 선택.
 
-**Firefox** — `about:debugging#/runtime/this-firefox` → *임시 부가 기능 로드* →
-`manifest.json` 선택.
+**소스에서 직접.** Chrome은 위와 같고, Firefox는
+`about:debugging#/runtime/this-firefox` → *임시 부가 기능 로드* → `manifest.json`
+선택. 임시라는 말 그대로 Firefox를 닫으면 사라지므로, 상시 사용보다는 개발용
+경로입니다.
 
 그런 다음 <https://music.youtube.com>을 열고 아무 곡이나 재생한 뒤, 플레이어 바의
 전체 화면 버튼(확장 버튼 왼쪽)을 누르세요.
@@ -306,4 +330,5 @@ aria-valuenow`의 모든 측정값은 `[offset, offset + 1)` 안 어딘가에 �
 아닌 도구들 — `.git`, `.gitignore`, `.claude`, `dist` — 을 뺀 것입니다. 문서들은 일부러
 함께 실려 갑니다. MIT는 라이선스가 소스와 동행하기를 요구하고, OFL은 폰트와
 `src/fonts/OFL.txt`에 대해 같은 것을 요구하며, 패키지 안에서 PRIVACY.md를 찾은 심사자는
-찾아갈 곳이 하나 줄어드니까요.
+찾아갈 곳이 하나 줄어드니까요. `docs/screenshots/`도 같은 이유로 함께 갑니다 — 120 KB
+이고, 빼면 패키지 안의 README에 구멍이 셋 생깁니다.

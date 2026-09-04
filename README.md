@@ -5,6 +5,20 @@
 A fullscreen now-playing screen for YouTube Music, tinted by the album cover.
 Chrome and Firefox, one codebase, no build step.
 
+[**Get it for Firefox**](https://addons.mozilla.org/firefox/addon/ytmusic-ambient-display/)
+&nbsp;·&nbsp;
+[![Firefox Add-ons](https://img.shields.io/amo/v/ytmusic-ambient-display?label=addons.mozilla.org&color=ff7139)](https://addons.mozilla.org/firefox/addon/ytmusic-ambient-display/)
+[![Users](https://img.shields.io/amo/users/ytmusic-ambient-display?label=users&color=555)](https://addons.mozilla.org/firefox/addon/ytmusic-ambient-display/)
+
+![The display: cover, title and artist over a gradient taken from the album art](docs/screenshots/display.webp)
+
+Every colour on screen comes out of the cover. Nothing is themed by hand.
+
+| | |
+| --- | --- |
+| ![Lyrics following the song, the current line lit](docs/screenshots/lyrics.webp) | ![The queue, with autoplay's tail numbered in the same run](docs/screenshots/queue.webp) |
+| **Lyrics that follow the song.** Timed lines from LRCLIB, lit one at a time, scrolling themselves. | **The queue,** carrying autoplay's tail on the end of it and numbered in one run. |
+
 - A side panel showing either lyrics or the queue — one at a time, or neither
   (chevron opens and closes it; the section heading switches between the two)
 - The queue carries autoplay's tail on the end of it, under one rule, numbered
@@ -26,13 +40,23 @@ draws its own screen on top.
 
 ## Install
 
-Nothing to build — load the folder as-is.
+**Firefox — from Mozilla's add-on site.** This is the official listing, reviewed
+and signed by Mozilla, and it updates itself:
 
-**Chrome** — `chrome://extensions` → enable Developer mode → *Load unpacked* →
-pick this folder.
+> **<https://addons.mozilla.org/firefox/addon/ytmusic-ambient-display/>**
 
-**Firefox** — `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on*
-→ pick `manifest.json`.
+It is listed there as **YTMusic Ambient Display**; the extension id is
+`ytm-display@jb142`, which is the thing to check if you want to be sure a copy is
+mine. Anything served from anywhere else is not.
+
+**Chrome — not in the Web Store.** Load the folder as-is; there is nothing to
+build. `chrome://extensions` → enable Developer mode → *Load unpacked* → pick
+this folder.
+
+**From source, either browser.** Chrome as above. On Firefox,
+`about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → pick
+`manifest.json` — temporary meaning it is gone when Firefox closes, so this is
+for development rather than for using it day to day.
 
 Then open <https://music.youtube.com>, play something, and press the fullscreen
 button in the player bar (left of the expand button).
@@ -322,4 +346,6 @@ Packaging note: the store build is everything in the repository except `dev/`,
 `.claude`, `dist`. The documents travel with it on purpose: MIT asks that the
 licence accompany the source, the OFL asks the same of the font and
 `src/fonts/OFL.txt`, and a reviewer who finds PRIVACY.md inside the package has
-one fewer place to go looking.
+one fewer place to go looking. `docs/screenshots/` travels with them for the same
+reason — it is 120 KB, and without it the README inside the package has three
+holes in it.
