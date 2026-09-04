@@ -13,6 +13,8 @@ Chrome and Firefox, one codebase, no build step.
 - Lyrics that follow the song: the current line is lit and the column scrolls
   itself, wherever timed lyrics can be found for the track
 - Play/pause, previous, next and a scrubbable progress bar, always visible
+- Volume in the bottom-right corner: click to mute, hover for the column, or
+  just roll the wheel over it
 - Large title and artist
 - The cover as a physical sleeve: it turns in 3D under the pointer and catches
   a highlight where you push it. Still whenever nobody is touching it

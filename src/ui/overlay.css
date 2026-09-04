@@ -769,10 +769,14 @@
 
 /* ----------------------------------------------------------------- rail -- */
 
+/* Transport, scrub bar, volume -- left, middle, right. The volume takes the
+ * corner rather than sitting beside the transport: it is the one control on
+ * this screen nobody reaches for while a song is going well, and the far end of
+ * the rail is where that belongs. */
 .rail {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: clamp(22px, 3vw, 56px);
   padding: clamp(14px, 2vh, 26px) var(--pad-x) var(--pad-y);
@@ -851,19 +855,104 @@
   transition: background-color var(--swap) var(--ease);
 }
 
+/* --------------------------------------------------------------- volume -- */
+
+/* The same bar as the scrub, stood on its end -- same thickness, same radius,
+ * same ink, same swell while it is held. It is deliberately not on screen at
+ * rest: a second bar standing permanently next to the progress bar reads as a
+ * second progress bar, and this rail has one thing to say about how far through
+ * the song we are. At rest the button is the whole control, and one click on it
+ * mutes. */
+.volume { position: relative; display: flex; }
+
+.tbtn--vol { width: 42px; height: 42px; }
+.tbtn--vol svg { width: 21px; height: 21px; }
+
+/* Anchored to the button's own box, with the gap between them living inside the
+ * padding rather than between the two boxes. That is what lets the pointer
+ * travel from the icon up to the bar without crossing dead space -- a real gap
+ * here would drop the hover and close the column under the hand reaching for
+ * it. */
+.volume-pop {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 11px;
+  padding-bottom: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 7px);
+  transition: opacity 190ms var(--ease), transform 190ms var(--ease);
+}
+/* :focus-within is the keyboard's way in -- tabbing to the column has to bring
+ * it on screen. .is-open is set for the length of a drag, so a pointer that
+ * wanders off the bar mid-gesture does not take the bar with it. */
+.volume:hover .volume-pop,
+.volume:focus-within .volume-pop,
+.volume.is-open .volume-pop {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+/* Same type as the elapsed and remaining times at the other end of the rail. */
+.vlevel {
+  font: 500 12.48px/1 var(--sans);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+  color: var(--ink-faint);
+}
+
+.vtrack {
+  position: relative;
+  width: 7px;
+  height: clamp(84px, 13vh, 124px);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 15%, transparent);
+  cursor: pointer;
+  touch-action: none;
+  transition: width 170ms var(--ease);
+}
+.vtrack.is-scrubbing { width: 10px; }
+/* Generous hit area regardless of how thin the bar currently is. */
+.vtrack::before { content: ""; position: absolute; inset: 0 -13px; }
+
+/* Fills from the floor: a column that emptied downwards from full would read as
+ * the level draining rather than as the level itself. */
+.vfill {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: var(--v, 0%);
+  border-radius: inherit;
+  background: var(--ink);
+  transition: background-color var(--swap) var(--ease), opacity 190ms var(--ease);
+}
+
+/* Muted is not "volume zero" -- the level the sound will come back to is still
+ * worth showing, so the fill stays where it is and only its ink steps back. Far
+ * enough back to be unmistakable against the 15% groove behind it, and not so
+ * far that the bar looks emptied.
+ *
+ * Opacity rather than a second background colour: the colour is already
+ * carrying the palette crossfade at --swap, and a mute answering a click 1.1
+ * seconds later is not an answer. */
+.volume.is-muted .vfill { opacity: .34; }
 
 /* --------------------------------------------------------- entry stagger -- */
 
 /* Applied by open(): the class is removed and re-added around a forced reflow,
  * which is the only reliable way to replay a CSS animation. */
 .root[data-motion="on"].is-entering
-:is(.chrome, .side-toggle .iconbtn, .art-wrap, .meta, .transport, .scrub) {
+:is(.chrome, .side-toggle .iconbtn, .art-wrap, .meta, .transport, .scrub, .volume) {
   animation: rise 620ms var(--ease) both;
 }
 .root.is-entering .art-wrap  { animation-delay: 0ms; }
 .root.is-entering .meta      { animation-delay: 70ms; }
 .root.is-entering .transport { animation-delay: 130ms; }
 .root.is-entering .scrub     { animation-delay: 165ms; }
+.root.is-entering .volume    { animation-delay: 190ms; }
 .root.is-entering .chrome    { animation-delay: 190ms; }
 .root.is-entering .side-toggle .iconbtn { animation-delay: 190ms; }
 
@@ -874,7 +963,7 @@
 
 /* ------------------------------------------------------------------ a11y -- */
 
-:is(.switcher button, .iconbtn, .tbtn, .qrow, .track):focus-visible {
+:is(.switcher button, .iconbtn, .tbtn, .qrow, .track, .vtrack):focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 3px;
 }
@@ -913,6 +1002,19 @@
   .root[data-panel="none"] .meta { margin-top: clamp(16px, 2.2vh, 28px); }
   .notes::before { display: none; }
   .panel, .switcher { padding-left: 0; }
-  .rail { grid-template-columns: minmax(0, 1fr); gap: 14px; justify-items: center; }
-  .scrub { width: 100%; }
+  /* Two rows instead of one: the buttons take the top, the bar the full width
+     underneath. The columns are still three, and every child is placed by hand
+     -- the transport centres on the rail, the volume keeps the right edge it
+     has in the wide layout, and the bar spans the lot. Left to auto-placement
+     the spanning bar would push the volume onto a third row of its own, and
+     shrink-wrapping the grid to centre the pair would take the bar's width
+     down with it. */
+  .rail {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 12px;
+    justify-items: center;
+  }
+  .transport { grid-area: 1 / 2; }
+  .volume    { grid-area: 1 / 3; justify-self: end; }
+  .scrub     { grid-area: 2 / 1 / 3 / 4; width: 100%; }
 }

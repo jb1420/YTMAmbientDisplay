@@ -21,6 +21,17 @@ YTMD.Overlay = (() => {
     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"` +
     ` stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
+  /* The cone is filled -- same solid-glyph weight as the transport icons -- and
+   * whatever sits to its right is stroked. A sound wave drawn as a filled
+   * crescent reads as a shape; drawn as a line it reads as a wave. Three states
+   * share the one body so the glyph does not appear to jump when the level
+   * crosses a threshold. */
+  const speaker = (right) =>
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path fill="currentColor" d="M12.6 4.9 7 9.1H3.6v5.8H7l5.6 4.2z"/>' +
+    '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
+    `${right}</g></svg>`;
+
   const ICON = {
     prev: svg('<path d="M7 6v12H5V6h2zm12 0v12l-9-6 9-6z"/>'),
     next: svg('<path d="M17 6v12h2V6h-2zM5 6v12l9-6-9-6z"/>'),
@@ -36,6 +47,10 @@ YTMD.Overlay = (() => {
     disc: svg('<path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 13.2a3.2 3.2 0 110-6.4 3.2 3.2 0 010 6.4z"/>'),
     chevronLeft: stroke('<path d="M15 6 9 12l6 6"/>'),
     chevronRight: stroke('<path d="m9 6 6 6-6 6"/>'),
+    volHigh: speaker('<path d="M16.1 9.2a4 4 0 0 1 0 5.6"/>' +
+                     '<path d="M18.7 6.6a7.6 7.6 0 0 1 0 10.8"/>'),
+    volLow: speaker('<path d="M16.1 9.2a4 4 0 0 1 0 5.6"/>'),
+    volMute: speaker('<path d="m16.9 9.7 4.7 4.6"/><path d="m21.6 9.7-4.7 4.6"/>'),
   };
 
   const TEMPLATE = `
@@ -111,6 +126,18 @@ YTMD.Overlay = (() => {
             <div class="fill"></div>
           </div>
           <span class="time time--remain">-0:00</span>
+        </div>
+        <div class="volume">
+          <button class="tbtn tbtn--vol" data-act="mute" aria-label="음소거"
+                  aria-pressed="false">${ICON.volHigh}</button>
+          <div class="volume-pop">
+            <span class="vlevel">100</span>
+            <div class="vtrack" role="slider" tabindex="0" aria-label="볼륨"
+                 aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100"
+                 aria-valuenow="100">
+              <div class="vfill"></div>
+            </div>
+          </div>
         </div>
       </footer>
     </div>
@@ -271,7 +298,8 @@ YTMD.Overlay = (() => {
      * @param {string} opts.assetsBase  root that contains ui/ and fonts/
      * @param {object} opts.handlers    onPlayPause, onPrev, onNext, onSeek(sec),
      *                                  onToggleNotes, onSelectPanel(name), onExit,
-     *                                  onQueuePick(i)
+     *                                  onQueuePick(i), onToggleMute,
+     *                                  onSetVolume(0..1)
      */
     constructor({ assetsBase, handlers = {} }) {
       this.assetsBase = assetsBase.replace(/\/$/, "");
@@ -283,6 +311,9 @@ YTMD.Overlay = (() => {
 
       this._playback = { position: 0, duration: 0, paused: true, at: 0 };
       this._scrub = null;        // fraction while dragging, else null
+      this._volume = { level: 1, muted: false };
+      this._vdrag = null;        // fraction while dragging the column, else null
+      this._volIcon = ICON.volHigh;
       this._liveSlot = "a";
       this._artUrl = null;
       this._lastQueue = null;
@@ -372,6 +403,10 @@ YTMD.Overlay = (() => {
         track: $(".track"),
         elapsed: $(".time--elapsed"),
         remain: $(".time--remain"),
+        volume: $(".volume"),
+        mute: $('[data-act="mute"]'),
+        vtrack: $(".vtrack"),
+        vlevel: $(".vlevel"),
       };
     }
 
@@ -388,6 +423,7 @@ YTMD.Overlay = (() => {
           case "notes": h.onToggleNotes?.(); break;
           case "show-lyrics": h.onSelectPanel?.("lyrics"); break;
           case "show-queue": h.onSelectPanel?.("queue"); break;
+          case "mute": h.onToggleMute?.(); break;
         }
       });
 
@@ -398,6 +434,8 @@ YTMD.Overlay = (() => {
 
       this._wireLyrics();
       this._wireScrub();
+      this._wireVolume();
+      this._paintVolume();
 
       // Only the coordinates are stored here; the rect they are measured
       // against is read once per frame in _stepTilt, so a fast pointer cannot
@@ -499,6 +537,82 @@ YTMD.Overlay = (() => {
           this.handlers.onSeek?.(clamp(position - step, 0, duration));
         }
       });
+    }
+
+    /* The scrub bar stood on its end, and the same drag. Two differences worth
+     * naming.
+     *
+     * The axis is inverted -- the fraction is measured up from the bottom,
+     * because a column of volume fills from the floor and a bar that grew
+     * downwards from full would read as an emptying one.
+     *
+     * And the column is only on screen while the pointer is on the control, so
+     * a drag has to survive the pointer wandering off it: `is-open` pins it for
+     * the length of the gesture, which the hover rule alone could not do. */
+    _wireVolume() {
+      const track = this.el.vtrack;
+      const wrap = this.el.volume;
+
+      const fractionAt = (clientY) => {
+        const r = track.getBoundingClientRect();
+        return r.height ? clamp((r.bottom - clientY) / r.height, 0, 1) : 0;
+      };
+
+      const push = (f) => {
+        this._vdrag = f;
+        this._paintVolume();
+        this.handlers.onSetVolume?.(f);
+      };
+
+      const move = (ev) => push(fractionAt(ev.clientY));
+
+      const up = (ev) => {
+        const f = this._vdrag ?? fractionAt(ev.clientY);
+        this._vdrag = null;
+        track.classList.remove("is-scrubbing");
+        wrap.classList.remove("is-open");
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        this.handlers.onSetVolume?.(f);
+        // The drag's own fraction is gone now, so what is on screen is whatever
+        // level was last reported. Repainted rather than left to the echo: a
+        // handler that does not report back would otherwise let the bar snap
+        // to the level the drag started from.
+        this._paintVolume();
+      };
+
+      track.addEventListener("pointerdown", (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault();
+        track.classList.add("is-scrubbing");
+        wrap.classList.add("is-open");
+        push(fractionAt(ev.clientY));
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      });
+
+      track.addEventListener("keydown", (ev) => {
+        const step = ev.shiftKey ? .1 : .05;
+        const level = this._volume.level;
+        let next;
+        if (ev.key === "ArrowUp" || ev.key === "ArrowRight") next = level + step;
+        else if (ev.key === "ArrowDown" || ev.key === "ArrowLeft") next = level - step;
+        else if (ev.key === "Home") next = 0;
+        else if (ev.key === "End") next = 1;
+        else return;
+        ev.preventDefault();
+        this.handlers.onSetVolume?.(clamp(next, 0, 1));
+      });
+
+      /* The wheel over a speaker icon is the gesture everybody tries first, and
+       * on this screen it has nothing else to do -- the page behind the overlay
+       * cannot scroll and neither can the rail. Not passive: the point is to
+       * take the event. */
+      wrap.addEventListener("wheel", (ev) => {
+        ev.preventDefault();
+        const step = ev.deltaY > 0 ? -.05 : .05;
+        this.handlers.onSetVolume?.(clamp(this._volume.level + step, 0, 1));
+      }, { passive: false });
     }
 
     destroy() {
@@ -744,6 +858,42 @@ YTMD.Overlay = (() => {
       this.shadow.querySelectorAll(".qrow[aria-current='true']")
         .forEach((r) => (r.dataset.playing = String(!paused)));
       this._paint();
+    }
+
+    /** @param {{volume?:number, muted?:boolean}} state -- volume is 0..1. */
+    setVolume({ volume = 1, muted = false } = {}) {
+      this._volume = {
+        level: clamp(Number.isFinite(volume) ? volume : 1, 0, 1),
+        muted: !!muted,
+      };
+      this._paintVolume();
+    }
+
+    /* A drag paints itself, so what is on screen is the drag's fraction while
+     * one is in progress and the reported level otherwise -- the same
+     * arrangement `_paint` uses for the scrub bar, and for the same reason: the
+     * player's echo of a level we just set arrives a frame or two late. */
+    _paintVolume() {
+      if (!this.el.vtrack) return;
+      const { level, muted } = this._volume;
+      const shown = this._vdrag ?? level;
+      const pct = Math.round(shown * 100);
+      const off = muted || pct === 0;
+
+      this.el.volume.classList.toggle("is-muted", muted);
+      this.el.vtrack.style.setProperty("--v", `${shown * 100}%`);
+      this.el.vlevel.textContent = String(pct);
+      this.el.vtrack.setAttribute("aria-valuenow", String(pct));
+      this.el.vtrack.setAttribute("aria-valuetext", muted ? "음소거" : `${pct}%`);
+
+      // Compared before writing: innerHTML on every pointermove of a drag would
+      // rebuild the glyph a few dozen times to arrive at the same three shapes.
+      const icon = off ? ICON.volMute : pct < 50 ? ICON.volLow : ICON.volHigh;
+      if (icon !== this._volIcon) {
+        this._volIcon = icon;
+        this.el.mute.innerHTML = icon;
+      }
+      this.el.mute.setAttribute("aria-pressed", String(muted));
     }
 
     /** Adapter trouble, surfaced in the top bar. Empty text hides the slot. */

@@ -10,8 +10,9 @@
  *   - Never match tabs or buttons by their label for the same reason.
  *
  * Reads come from <video> plus the player bar; writes go through YTM's own
- * buttons so its internal state stays consistent. Seeking is the exception --
- * assigning to video.currentTime is exact, and YTM follows along.
+ * buttons so its internal state stays consistent. Seeking and volume are the
+ * exceptions -- there is no button to click for either, assigning to
+ * video.currentTime and video.volume is exact, and YTM follows along.
  */
 
 globalThis.YTMD = globalThis.YTMD || {};
@@ -253,14 +254,59 @@ YTMD.adapter = (() => {
     v.currentTime = Math.max(0, target + (mediaOffset() ?? 0));
   }
 
+  /* -------------------------------------------------------------- volume -- */
+
+  /* Read and written on the media element, the way seeking is. The other route
+   * would be YTM's own volume control, and there is nothing to click there: it
+   * is a Polymer paper-slider, so "set the volume" means synthesising a
+   * pointer gesture at a computed coordinate inside it. The element is where
+   * the real level lives either way, and YTM's player follows the
+   * `volumechange` an assignment fires -- its own slider moves with ours.
+   *
+   * `lastAudible` is the level unmuting comes back to. A drag to the floor is
+   * the case that needs it: `muted` is false there, so nothing else in the
+   * state says what there is to restore. Sampled on the way past, which the
+   * watcher below does on every volumechange. */
+  let lastAudible = 1;
+
+  function getVolume() {
+    const v = video();
+    if (!v) return { volume: 1, muted: false };
+    const volume = clamp(v.volume, 0, 1);
+    if (!v.muted && volume > 0) lastAudible = volume;
+    // Silence is silence. A track at zero with `muted` false still has to draw
+    // the muted glyph, or the icon claims sound that is not coming.
+    return { volume, muted: !!v.muted || volume === 0 };
+  }
+
+  function setVolume(level) {
+    const v = video();
+    if (!v || !Number.isFinite(level)) return;
+    v.volume = clamp(level, 0, 1);
+    // Reaching for the bar is asking to hear something.
+    if (v.volume > 0) v.muted = false;
+  }
+
+  function toggleMute() {
+    const v = video();
+    if (!v) return;
+    if (v.volume === 0) {
+      v.muted = false;
+      v.volume = lastAudible > 0 ? lastAudible : .5;
+      return;
+    }
+    v.muted = !v.muted;
+  }
+
   /* ------------------------------------------------------------ watching -- */
 
   /**
    * Subscribes to everything the display needs.
-   * @param {{onTrack:(t:object)=>void, onPlayback:(p:object)=>void}} cb
+   * @param {{onTrack:(t:object)=>void, onPlayback:(p:object)=>void,
+   *          onVolume?:(v:object)=>void}} cb
    * @returns {() => void} dispose
    */
-  function watch({ onTrack, onPlayback }) {
+  function watch({ onTrack, onPlayback, onVolume }) {
     let lastKey = null;
     let boundVideo = null;
     const disposers = [];
@@ -291,6 +337,11 @@ YTMD.adapter = (() => {
       onPlayback?.(pb);
     };
 
+    /* Its own emitter, on its own event. Volume does not belong in the playback
+     * payload: that one is restamped and interpolated against a clock, and a
+     * level has nothing to do with either. */
+    const emitVolume = () => onVolume?.(getVolume());
+
     const emitTrack = (force = false) => {
       const track = getTrack();
       const changed = track.key !== lastKey;
@@ -315,12 +366,17 @@ YTMD.adapter = (() => {
       // estimate keeps the smallest reading it sees. So it starts over.
       const onSeeked = () => { resetClock(); emitPlayback(); };
       v.addEventListener("seeked", onSeeked);
+      // Covers our own writes and YTM's slider alike -- whoever moved it, the
+      // element reports it.
+      v.addEventListener("volumechange", emitVolume);
       disposers.push(() => {
         events.forEach((t) => v.removeEventListener(t, emitPlayback));
         v.removeEventListener("seeked", onSeeked);
+        v.removeEventListener("volumechange", emitVolume);
       });
       boundVideo = v;
       emitPlayback();
+      emitVolume();
     };
 
     // Watching the title node and the cover's src is precise. Watching the whole
@@ -377,7 +433,7 @@ YTMD.adapter = (() => {
   const ready = () => !!$(SEL.bar) && !!$(SEL.title);
 
   return {
-    SEL, ready, getTrack, getPlayback, coverAt,
-    playPause, prev, next, seek, watch, diagnose,
+    SEL, ready, getTrack, getPlayback, getVolume, coverAt,
+    playPause, prev, next, seek, setVolume, toggleMute, watch, diagnose,
   };
 })();

@@ -110,6 +110,8 @@
         onPrev: () => adapter.prev(),
         onNext: () => adapter.next(),
         onSeek: (sec) => adapter.seek(sec),
+        onSetVolume: (level) => adapter.setVolume(level),
+        onToggleMute: () => adapter.toggleMute(),
         onQueuePick: (i) => queue.play(i),
         onExit: () => closeDisplay(),
         // Two separate jobs: the switcher chooses which of the two shows, the
@@ -128,6 +130,10 @@
     });
     await overlay.mount(document.documentElement);
     overlay.setMotion(state.settings.gradientMotion);
+    // The level is the player's, not ours, and it was already set before the
+    // display existed. Read once here so the control is right the first time it
+    // is looked at; every change after this arrives on volumechange.
+    overlay.setVolume(adapter.getVolume());
     applyLyricSettings();
     applyPanel();
     return overlay;
@@ -303,6 +309,14 @@
     refreshQueue();
   }
 
+  /* Not gated on `state.open`, unlike the playback tick. It fires only when
+   * somebody moves the volume, so keeping it current costs nothing and means
+   * the column never opens showing a level that is out of date -- including
+   * when the change came from YTM's own slider while the display was closed. */
+  function onVolume(vol) {
+    overlay?.setVolume(vol);
+  }
+
   function onPlayback(pb) {
     if (!state.open) return;
     overlay?.setPlayback(pb);
@@ -329,7 +343,7 @@
   function startWatching() {
     unwatchPlayer?.();
     unwatchQueue?.();
-    unwatchPlayer = adapter.watch({ onTrack, onPlayback });
+    unwatchPlayer = adapter.watch({ onTrack, onPlayback, onVolume });
     unwatchQueue = queue.watch(refreshQueue);
   }
 

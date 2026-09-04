@@ -91,12 +91,20 @@
     motion: true,
     position: 20,
     lyricOffset: 0,    // seconds, what [ and ] adjust in the extension
+    volume: .72,       // 0..1, what the extension reads off <video>
+    muted: false,
   };
 
   let lastPanel = "lyrics";     // what the chevron reopens, same as the extension
 
   const $ = (id) => document.getElementById(id);
   const track = () => MOCK.tracks[state.index];
+
+  /* Pushed on its own rather than through sync(): a drag calls the handler on
+     every pointermove, and a full sync would re-extract the palette and rebuild
+     the lyric column a few dozen times per gesture. */
+  const paintVolume = () =>
+    overlay.setVolume({ volume: state.volume, muted: state.muted });
 
   const overlay = new YTMD.Overlay({
     assetsBase: "../src",
@@ -105,6 +113,18 @@
       onPrev: () => step(-1),
       onNext: () => step(1),
       onSeek: (sec) => { state.position = sec; sync(); },
+      // Same rules as the adapter: a level above zero means sound is wanted,
+      // and unmuting from a floored bar has to bring a level back with it.
+      onSetVolume: (v) => {
+        state.volume = v;
+        if (v > 0) state.muted = false;
+        paintVolume();
+      },
+      onToggleMute: () => {
+        if (state.volume === 0) { state.volume = .5; state.muted = false; }
+        else state.muted = !state.muted;
+        paintVolume();
+      },
       onSelectPanel: (name) => { state.panel = name; sync(); },
       onToggleNotes: () => {
         if (state.panel === "none") { state.panel = lastPanel; }
@@ -152,6 +172,7 @@
     overlay.setTrack({ title: t.title, artist: t.artist, album: t.album, artUrl: t.artUrl });
     overlay.setPlayback({ position: state.position, duration: t.duration, paused: state.paused });
     overlay.setLyrics(t.lyrics);
+    paintVolume();
     overlay.setQueue({
       items: MOCK.queue.map((q, i) => ({ ...q, current: i === t.queueIndex })),
     });
