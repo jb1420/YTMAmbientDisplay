@@ -40,7 +40,7 @@ YTMD.lyrics = (() => {
    * they are. This header and not User-Agent: that one is missing from the
    * service's CORS allow-list, and sending it fails the preflight rather than
    * the request -- which looks from here like the service being down. */
-  const CLIENT = "YTM Ambient Display v0.2.1";
+  const CLIENT = "YTM Ambient Display v0.3.0";
 
   async function getJson(path, params) {
     const ctl = new AbortController();
